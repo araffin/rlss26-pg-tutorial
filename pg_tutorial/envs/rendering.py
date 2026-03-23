@@ -32,6 +32,13 @@ COL_CLOSEST_DOT = (255, 211, 105)
 COL_HUD_TEXT = (200, 200, 200)
 COL_HUD_BG = (34, 40, 49, 180)
 
+# ---------------------------------------------------------------------------
+# Centre-line dash width (pixels).  Increase this value to make the dashed
+# centre line thicker.
+# ---------------------------------------------------------------------------
+
+CENTER_LINE_WIDTH: float = 3.0
+
 
 # ---------------------------------------------------------------------------
 # Track geometry helpers
@@ -53,7 +60,7 @@ def compute_track_normals(
         prev_idx = (idx - 1) % num_wp
         next_idx = (idx + 1) % num_wp
         tangent = waypoints[next_idx] - waypoints[prev_idx]
-        length = np.linalg.norm(tangent)
+        length = float(np.linalg.norm(tangent))
         if length < 1e-9:
             normals[idx] = np.array([0.0, -1.0])
         else:
@@ -62,23 +69,70 @@ def compute_track_normals(
     return normals
 
 
-def build_road_polygon(
+def _draw_road_quads(
+    surface: Any,
+    pygame_module: Any,
     waypoints: NDArray[np.float64],
     normals: NDArray[np.float64],
     half_width: float,
-) -> list[tuple[int, int]]:
-    """Return a closed polygon tracing the left edge forward, then the
-    right edge backward.  When filled this gives a smooth road band with
-    no scalloping."""
+    colour: tuple[int, int, int],
+) -> None:
+    """Draw the road as one filled quad per segment.
+
+    Unlike a single giant polygon that traces the full left edge forward and
+    right edge backward, per-segment quads never self-intersect at tight
+    inner curves.  Overlapping neighbouring quads are harmless because
+    they share the same fill colour.
+    """
     left_edge = waypoints + normals * half_width
     right_edge = waypoints - normals * half_width
-    # Forward along left, then backward along right -> closed loop
-    polygon: list[tuple[int, int]] = []
-    for point in left_edge:
-        polygon.append((int(point[0]), int(point[1])))
-    for point in right_edge[::-1]:
-        polygon.append((int(point[0]), int(point[1])))
-    return polygon
+    num_wp = len(waypoints)
+
+    for idx in range(num_wp):
+        next_idx = (idx + 1) % num_wp
+        quad = [
+            (int(left_edge[idx][0]), int(left_edge[idx][1])),
+            (int(left_edge[next_idx][0]), int(left_edge[next_idx][1])),
+            (int(right_edge[next_idx][0]), int(right_edge[next_idx][1])),
+            (int(right_edge[idx][0]), int(right_edge[idx][1])),
+        ]
+        pygame_module.draw.polygon(surface, colour, quad)
+
+
+def _aa_thick_line(
+    surface: Any,
+    pygame_module: Any,
+    pt_a: NDArray[np.float64],
+    pt_b: NDArray[np.float64],
+    half_width: float,
+    colour: tuple[int, int, int],
+) -> None:
+    """Draw an anti-aliased thick line segment as a filled polygon.
+
+    The dash is rendered as an oriented rectangle whose long axis runs from
+    *pt_a* to *pt_b* and whose short axis has the given *half_width*.  The
+    outline is drawn with ``aalines`` for sub-pixel anti-aliasing.
+    """
+    direction = pt_b - pt_a
+    length = float(np.linalg.norm(direction))
+    if length < 0.5:
+        return
+    # Unit normal perpendicular to the dash direction
+    normal = np.array([-direction[1], direction[0]]) / length
+
+    offset = normal * half_width
+    corners = [
+        (pt_a[0] + offset[0], pt_a[1] + offset[1]),
+        (pt_b[0] + offset[0], pt_b[1] + offset[1]),
+        (pt_b[0] - offset[0], pt_b[1] - offset[1]),
+        (pt_a[0] - offset[0], pt_a[1] - offset[1]),
+    ]
+    int_corners = [(round(cx), round(cy)) for cx, cy in corners]
+
+    # Filled body
+    pygame_module.draw.polygon(surface, colour, int_corners)
+    # Anti-aliased outline for smooth edges
+    pygame_module.draw.aalines(surface, colour, True, corners)
 
 
 # ---------------------------------------------------------------------------
@@ -92,27 +146,32 @@ def render_track(
     track_waypoints: NDArray[np.float64],
     track_width: float,
 ) -> None:
-    """Draw the road polygon and anti-aliased dashed centre line onto *surface*."""
-    # -- draw track as filled polygon ---------------------------------------
+    """Draw the road surface and anti-aliased dashed centre line.
+
+    The road is drawn as per-segment quads rather than a single polygon, which
+    avoids self-intersection artefacts on the inner edge of tight curves and
+    at the loop-closing segment.
+
+    The dashed centre line is drawn as oriented rectangle polygons with AA
+    outlines, giving a clean look at any configurable width (see
+    ``CENTER_LINE_WIDTH``).
+    """
     normals = compute_track_normals(track_waypoints)
     road_hw = float(track_width)
     edge_hw = road_hw + 2.0
 
-    # Outer edge polygon (slightly wider -> acts as border)
-    edge_poly = build_road_polygon(track_waypoints, normals, edge_hw)
-    pygame_module.draw.polygon(surface, COL_TRACK_EDGE, edge_poly)
+    # Outer edge (slightly wider -> acts as border)
+    _draw_road_quads(surface, pygame_module, track_waypoints, normals, edge_hw, COL_TRACK_EDGE)
 
-    # Road-fill polygon
-    fill_poly = build_road_polygon(track_waypoints, normals, road_hw)
-    pygame_module.draw.polygon(surface, COL_TRACK_FILL, fill_poly)
+    # Road fill
+    _draw_road_quads(surface, pygame_module, track_waypoints, normals, road_hw, COL_TRACK_FILL)
 
     # -- anti-aliased dashed centre line ------------------------------------
-    # Pre-compute cumulative arc length along the track so we can place
-    # dashes evenly regardless of waypoint spacing.
     num_wp = len(track_waypoints)
     dash_on = 12.0
     dash_off = 12.0
     dash_cycle = dash_on + dash_off
+    line_hw = CENTER_LINE_WIDTH / 2.0
 
     cumulative_len = 0.0
     for seg_idx in range(num_wp):
@@ -122,37 +181,26 @@ def render_track(
         seg_vec = seg_end - seg_start
         seg_len = float(np.linalg.norm(seg_vec))
 
+        if seg_len < 1e-6:
+            cumulative_len += seg_len
+            continue
+
         # Walk along this segment drawing dashes
         pos = 0.0
         while pos < seg_len:
             phase = (cumulative_len + pos) % dash_cycle
             if phase < dash_on:
-                # We are inside a visible dash
+                # Inside a visible dash
                 remaining_on = dash_on - phase
                 draw_end = min(pos + remaining_on, seg_len)
-                frac_a = pos / seg_len if seg_len > 0 else 0.0
-                frac_b = draw_end / seg_len if seg_len > 0 else 0.0
+                frac_a = pos / seg_len
+                frac_b = draw_end / seg_len
                 pt_a = seg_start + frac_a * seg_vec
                 pt_b = seg_start + frac_b * seg_vec
-                # Use aaline for anti-aliased centre line
-                pygame_module.draw.aaline(
-                    surface,
-                    COL_CENTER_LINE,
-                    (pt_a[0], pt_a[1]),
-                    (pt_b[0], pt_b[1]),
-                )
-                # Draw a second pass slightly offset for visible thickness
-                # (aaline is always 1px; we stack a few for ~3px width)
-                for offset in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    pygame_module.draw.aaline(
-                        surface,
-                        COL_CENTER_LINE,
-                        (pt_a[0] + offset[0], pt_a[1] + offset[1]),
-                        (pt_b[0] + offset[0], pt_b[1] + offset[1]),
-                    )
+                _aa_thick_line(surface, pygame_module, pt_a, pt_b, line_hw, COL_CENTER_LINE)
                 pos = draw_end
             else:
-                # We are in a gap - skip ahead
+                # In a gap - skip ahead
                 remaining_off = dash_cycle - phase
                 pos += remaining_off
 
@@ -277,7 +325,10 @@ def render_hud(
 
     for line_idx, text in enumerate(hud_lines):
         text_surface = font.render(text, True, COL_HUD_TEXT)
-        surface.blit(text_surface, (4 + hud_padding, 4 + hud_padding + line_idx * line_height))
+        surface.blit(
+            text_surface,
+            (4 + hud_padding, 4 + hud_padding + line_idx * line_height),
+        )
 
 
 # ---------------------------------------------------------------------------
