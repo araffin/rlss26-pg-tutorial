@@ -261,35 +261,37 @@ def render_robot(
     half_base = wheel_base / 2.0
 
     # Wheels (drawn first so the body overlaps them slightly)
-    wheel_half_len = max(int(body_radius * 0.5), 3)
-    wheel_half_width = max(int(body_radius * 0.9), 2)
+    wheel_half_len = max(body_radius * 0.5, 3.0)
+    wheel_half_width = max(body_radius * 0.9, 2.0)
     for side in (-1.0, 1.0):
         wheel_cx = robot_x + side * half_base * perp_x
         wheel_cy = robot_y + side * half_base * perp_y
-        corners: list[tuple[int, int]] = []
+        # Float corners for anti-aliased outline
+        float_corners: list[tuple[float, float]] = []
         for along_sign, across_sign in [(-1, -1), (1, -1), (1, 1), (-1, 1)]:
             corner_x = wheel_cx + along_sign * wheel_half_len * cos_th + across_sign * wheel_half_width * perp_x
             corner_y = wheel_cy + along_sign * wheel_half_len * sin_th + across_sign * wheel_half_width * perp_y
-            corners.append((int(corner_x), int(corner_y)))
-        pygame_module.draw.polygon(surface, COL_WHEEL, corners)
-        pygame_module.draw.polygon(surface, COL_WHEEL_OUTLINE, corners, 1)
+            float_corners.append((corner_x, corner_y))
+        int_corners = [(round(cx), round(cy)) for cx, cy in float_corners]
+        pygame_module.draw.polygon(surface, COL_WHEEL, int_corners)
+        pygame_module.draw.aalines(surface, COL_WHEEL_OUTLINE, True, float_corners)
 
     # Body circle (anti-aliased)
     pygame_module.gfxdraw.aacircle(surface, robot_px, robot_py, body_radius, COL_ROBOT_OUTLINE)
     pygame_module.gfxdraw.filled_circle(surface, robot_px, robot_py, body_radius, COL_ROBOT_BODY)
     pygame_module.gfxdraw.aacircle(surface, robot_px, robot_py, body_radius, COL_ROBOT_OUTLINE)
 
-    # Heading indicator (simple line from centre in the direction of travel)
-    heading_length = body_radius + 15
-    heading_end_x = robot_px + int(heading_length * math.cos(robot_theta))
-    heading_end_y = robot_py + int(heading_length * math.sin(robot_theta))
-    pygame_module.draw.line(
-        surface,
-        COL_HEADING,
-        (robot_px, robot_py),
-        (heading_end_x, heading_end_y),
-        width=5,
+    # Heading indicator (anti-aliased thick line from centre outward)
+    heading_length = body_radius + 6
+    heading_start = np.array([robot_x, robot_y], dtype=np.float64)
+    heading_end = np.array(
+        [
+            robot_x + heading_length * math.cos(robot_theta),
+            robot_y + heading_length * math.sin(robot_theta),
+        ],
+        dtype=np.float64,
     )
+    _aa_thick_line(surface, pygame_module, heading_start, heading_end, 2, COL_HEADING)
 
 
 # ---------------------------------------------------------------------------
