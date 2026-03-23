@@ -82,6 +82,11 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         Velocity-proportional friction coefficient applied to the wheel
         speeds each step.  0 means no friction, 1 means full stop every
         step.
+    inertia:
+        First-order lag coefficient in [0, 1) that blends the previous
+        wheel speed toward the new target each step.  0 means instant
+        response (no inertia), 0.9 means the wheels are very sluggish.
+        Formally: ``speed = inertia * prev_speed + (1 - inertia) * target``.
     action_noise_std:
         Standard deviation of zero-mean Gaussian noise added to each wheel
         command *after* clipping.
@@ -115,6 +120,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         wheel_radius: float = 5.0,
         max_wheel_speed: float = 10.0,
         friction: float = 0.05,
+        inertia: float = 0.2,
         action_noise_std: float = 0.1,
         dt: float = 0.1,
         max_episode_steps: int = 2000,
@@ -144,6 +150,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.wheel_radius = wheel_radius
         self.max_wheel_speed = max_wheel_speed
         self.friction = np.clip(friction, 0.0, 1.0)
+        self.inertia = float(np.clip(inertia, 0.0, 1.0 - 1e-6))
         self.action_noise_std = max(action_noise_std, 0.0)
         self.dt = dt
         self.max_episode_steps = max_episode_steps
@@ -239,7 +246,11 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             target_left += float(noise[0])
             target_right += float(noise[1])
 
-        # Apply friction (exponential drag toward zero)
+        # Inertia: first-order lag blending previous speed toward the target
+        target_left = self.inertia * self.left_wheel_speed + (1.0 - self.inertia) * target_left
+        target_right = self.inertia * self.right_wheel_speed + (1.0 - self.inertia) * target_right
+
+        # Apply friction (velocity-proportional drag)
         self.left_wheel_speed = (1.0 - self.friction) * target_left
         self.right_wheel_speed = (1.0 - self.friction) * target_right
 
