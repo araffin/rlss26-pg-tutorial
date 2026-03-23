@@ -198,12 +198,24 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.step_count: int = 0
         self.forward_speed: float = 0.0
 
+        # Checkpoints: 8 evenly-spaced segment indices around the track.
+        # Checkpoint 0 doubles as the start/finish line.
+        num_checkpoints = 8
+        self.checkpoint_segment_indices: list[int] = [
+            round(idx * self.num_track_segments / num_checkpoints) % self.num_track_segments for idx in range(num_checkpoints)
+        ]
+        self.num_checkpoints: int = num_checkpoints
+        # How close (in segment index) the robot must be to a checkpoint
+        # for it to count as crossed.
+        # self._checkpoint_window: int = max(self.num_track_segments // (num_checkpoints * 2), 2)
+        self._checkpoint_window: int = 2
+
         # Lap tracking
         self.lap_count: int = 0
         self.lap_start_step: int = 0
         self.current_lap_time: float = 0.0
         self.best_lap_time: float = float("inf")
-        self._prev_segment_index: int = 0
+        self._next_checkpoint: int = 1  # start past CP 0 (robot spawns there)
 
     # ---- reset / step -----------------------------------------------------
 
@@ -234,7 +246,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.lap_start_step = 0
         self.current_lap_time = 0.0
         self.best_lap_time = float("inf")
-        self._prev_segment_index = 0
+        self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
 
         observation = self._get_observation()
         info = self._get_info()
@@ -296,24 +308,25 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         )
 
         # ---- track information & lap detection ----------------------------
-        prev_seg = self.current_segment_index
         lateral_error, heading_error, _ = self._compute_track_errors()
-        new_seg = self.current_segment_index
 
-        # Detect forward crossing of the start/finish line (segment 0).
-        # A lap is counted when the segment index wraps from near the end of
-        # the track back to near the start while travelling forward.
-        wrap_threshold = self.num_track_segments // 4
-        if prev_seg > self.num_track_segments - wrap_threshold and new_seg < wrap_threshold:
-            elapsed_steps = self.step_count - self.lap_start_step
-            if elapsed_steps > wrap_threshold:
-                # Only count if enough steps have passed (avoids spurious
-                # detections at episode start or from jitter).
-                lap_time = elapsed_steps * self.dt
+        # Checkpoint-based lap detection.
+        # The robot must cross checkpoints 1, 2, ..., 7, 0 in order.
+        # When checkpoint 0 (start/finish) is reached after all others,
+        # a lap is recorded.
+        cp_seg = self.checkpoint_segment_indices[self._next_checkpoint]
+        seg_diff = (self.current_segment_index - cp_seg) % self.num_track_segments
+        # seg_diff is in [0, N); values near 0 or near N mean "close"
+        near = min(seg_diff, self.num_track_segments - seg_diff)
+        if near <= self._checkpoint_window:
+            if self._next_checkpoint == 0:
+                # Crossed the start/finish line after all other checkpoints.
+                lap_time = (self.step_count - self.lap_start_step) * self.dt
                 self.lap_count += 1
                 if lap_time < self.best_lap_time:
                     self.best_lap_time = lap_time
                 self.lap_start_step = self.step_count
+            self._next_checkpoint = (self._next_checkpoint + 1) % self.num_checkpoints
 
         self.current_lap_time = (self.step_count - self.lap_start_step) * self.dt
 
@@ -369,6 +382,9 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             "lap_count": self.lap_count,
             "current_lap_time": self.current_lap_time,
             "best_lap_time": self.best_lap_time,
+            "next_checkpoint": self._next_checkpoint,
+            "num_checkpoints": self.num_checkpoints,
+            "checkpoint_segment_indices": self.checkpoint_segment_indices,
         }
 
     # ---- track geometry ---------------------------------------------------
@@ -455,7 +471,14 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         render_background_grid(surface, pygame, self.screen_width, self.screen_height)
 
         # -- track ----------------------------------------------------------
-        render_track(surface, pygame, self.track_waypoints, self.track_width)
+        render_track(
+            surface,
+            pygame,
+            self.track_waypoints,
+            self.track_width,
+            checkpoint_segment_indices=self.checkpoint_segment_indices,
+            next_checkpoint=self._next_checkpoint,
+        )
 
         # -- robot ----------------------------------------------------------
         _lat_err, _head_err, closest_pt = self._compute_track_errors()
@@ -485,6 +508,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             lap_count=self.lap_count,
             current_lap_time=self.current_lap_time,
             best_lap_time=self.best_lap_time,
+            next_checkpoint=self._next_checkpoint,
+            num_checkpoints=self.num_checkpoints,
         )
 
         if self.render_mode == "human":

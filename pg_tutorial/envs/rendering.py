@@ -36,6 +36,12 @@ COL_HUD_ACCENT = (255, 211, 105)
 COL_HUD_BEST = (0, 200, 140)
 COL_HUD_BG = (34, 40, 49, 200)
 
+# Checkpoint markers
+COL_CP_CROSSED = (0, 200, 140, 160)  # green — already crossed this lap
+COL_CP_NEXT = (255, 211, 105, 200)  # yellow — the next one to reach
+COL_CP_PENDING = (140, 140, 140, 100)  # grey — not yet reached
+COL_CP_START = (255, 100, 100, 200)  # red — start / finish line
+
 # ---------------------------------------------------------------------------
 # Centre-line dash width (pixels).  Increase this value to make the dashed
 # centre line thicker.
@@ -149,8 +155,10 @@ def render_track(
     pygame_module: Any,
     track_waypoints: NDArray[np.float64],
     track_width: float,
+    checkpoint_segment_indices: list[int] | None = None,
+    next_checkpoint: int = 0,
 ) -> None:
-    """Draw the road surface and anti-aliased dashed centre line.
+    """Draw the road surface, dashed centre line and checkpoint markers.
 
     The road is drawn as per-segment quads rather than a single polygon, which
     avoids self-intersection artefacts on the inner edge of tight curves and
@@ -159,6 +167,10 @@ def render_track(
     The dashed centre line is drawn as oriented rectangle polygons with AA
     outlines, giving a clean look at any configurable width (see
     ``CENTER_LINE_WIDTH``).
+
+    When *checkpoint_segment_indices* is provided, small tick marks are drawn
+    across the road at each checkpoint location.  Colours indicate whether a
+    checkpoint has been crossed, is the next target, or is still pending.
     """
     normals = compute_track_normals(track_waypoints)
     road_hw = float(track_width)
@@ -209,6 +221,42 @@ def render_track(
                 pos += remaining_off
 
         cumulative_len += seg_len
+
+    # -- checkpoint markers -------------------------------------------------
+    if checkpoint_segment_indices is not None:
+        # Single alpha surface for all checkpoint ticks (avoids per-tick
+        # surface allocation).
+        tick_surf = pygame_module.Surface(
+            (surface.get_width(), surface.get_height()),
+            pygame_module.SRCALPHA,
+        )
+        for cp_idx, cp_seg_idx in enumerate(checkpoint_segment_indices):
+            wp = track_waypoints[cp_seg_idx]
+            normal = normals[cp_seg_idx]
+
+            # Decide colour based on checkpoint state
+            if cp_idx == 0:
+                # Start / finish line - always a distinct colour
+                colour = COL_CP_START
+            elif cp_idx == next_checkpoint:
+                colour = COL_CP_NEXT
+            elif 0 < cp_idx < next_checkpoint:
+                colour = COL_CP_CROSSED
+            else:
+                colour = COL_CP_PENDING
+
+            # Draw a short line across the road at this waypoint
+            tick_hw = road_hw * 0.95  # almost full road width
+            left_pt = wp + normal * tick_hw
+            right_pt = wp - normal * tick_hw
+            pygame_module.draw.line(
+                tick_surf,
+                colour,
+                (int(left_pt[0]), int(left_pt[1])),
+                (int(right_pt[0]), int(right_pt[1])),
+                3 if cp_idx == 0 else 2,
+            )
+        surface.blit(tick_surf, (0, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +372,8 @@ def render_hud(
     lap_count: int = 0,
     current_lap_time: float = 0.0,
     best_lap_time: float = float("inf"),
+    next_checkpoint: int = 0,
+    num_checkpoints: int = 8,
 ) -> None:
     """Draw a semi-transparent HUD overlay in the top-left corner.
 
@@ -342,8 +392,19 @@ def render_hud(
 
     # -- top section (big font) ---------------------------------------------
     speed_px_per_s = abs(forward_speed)
+    # Checkpoint progress: how many have been crossed this lap.
+    # next_checkpoint is the *next* one to reach.  Checkpoints 1..next-1
+    # have been crossed (checkpoint 0 is the finish line).
+    if next_checkpoint == 0:
+        # Either no checkpoints crossed yet (lap start) or all crossed
+        # (about to register lap).  Show 0 if lap_count == 0 and step is 0.
+        crossed_count = 0
+    else:
+        crossed_count = next_checkpoint  # CPs 1..(next-1) plus CP 0 at start
+
     top_items: list[tuple[str, str, tuple[int, ...]]] = [
         ("LAP", f"{lap_count}", COL_HUD_ACCENT),
+        ("CP", f"{crossed_count}/{num_checkpoints}", COL_HUD_VALUE),
         ("SPEED", f"{speed_px_per_s:.1f}", COL_HUD_VALUE),
         ("TIME", _format_time(current_lap_time), COL_HUD_VALUE),
         (
