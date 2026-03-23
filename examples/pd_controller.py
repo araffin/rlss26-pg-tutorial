@@ -8,8 +8,7 @@ Run with::
     python examples/pd_controller.py --track s_track
     python examples/pd_controller.py --track hairpin
 
-Available tracks: ``oval`` (default), ``figure_eight``, ``s_track``,
-``rounded_l``, ``hairpin``.
+Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
 
 The controller reads the *lateral error* and *heading error* from the
 observation vector and computes a steering correction using proportional
@@ -30,7 +29,7 @@ import numpy as np
 
 # Register the custom environment
 import pg_tutorial  # noqa: F401
-from pg_tutorial.envs.line_follower import TRACK_BUILDERS
+from pg_tutorial.envs.tracks import TRACK_BUILDERS
 
 # ---------------------------------------------------------------------------
 # Observation indices (must match LineFollowerEnv._get_observation)

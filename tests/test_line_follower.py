@@ -8,10 +8,7 @@ from gymnasium.utils.env_checker import check_env
 
 # Ensure the environment is registered
 import pg_tutorial  # noqa: F401
-from pg_tutorial.envs.line_follower import (
-    LineFollowerEnv,
-    _closest_point_on_segment,
-)
+from pg_tutorial.envs.line_follower import LineFollowerEnv, _closest_point_on_segment
 
 # ---------------------------------------------------------------------------
 # Closest-point-on-segment helper tests
