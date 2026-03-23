@@ -11,3 +11,10 @@ register(
     entry_point="pg_tutorial.envs.line_follower:LineFollowerEnv",
     max_episode_steps=2000,
 )
+
+register(
+    id="LineFollowerRacing-v0",
+    entry_point="pg_tutorial.envs.line_follower:LineFollowerEnv",
+    max_episode_steps=2000,
+    kwargs={"reward_mode": "racing"},
+)

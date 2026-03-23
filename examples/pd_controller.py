@@ -115,6 +115,11 @@ def parse_args() -> argparse.Namespace:
         help="Name of the built-in track to use (default: oval).",
     )
     parser.add_argument(
+        "--racing",
+        action="store_true",
+        help="Use the racing reward variant (LineFollowerRacing-v0).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -127,8 +132,9 @@ def main() -> None:
     """Run one episode of the PD controller with rendering."""
     args = parse_args()
 
+    env_id = "LineFollowerRacing-v0" if args.racing else "LineFollower-v0"
     env = gym.make(
-        "LineFollower-v0",
+        env_id,
         render_mode="human",
         track_name=args.track,
         friction=0.05,

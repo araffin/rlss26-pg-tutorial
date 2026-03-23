@@ -1,4 +1,4 @@
-"""Tests for the LineFollower-v0 Gymnasium environment."""
+"""Tests for the LineFollower-v0 and LineFollowerRacing-v0 Gymnasium environments."""
 
 from __future__ import annotations
 
@@ -81,3 +81,37 @@ class TestGymEnvChecker:
         # gym.make wraps the env; check_env expects the unwrapped version
         check_env(env.unwrapped, skip_render_check=True)
         env.close()
+
+
+# ---------------------------------------------------------------------------
+# Racing reward variant
+# ---------------------------------------------------------------------------
+
+
+class TestRacingEnv:
+    """Tests for the LineFollowerRacing-v0 variant."""
+
+    def test_check_env_racing(self) -> None:
+        env = LineFollowerEnv(reward_mode="racing", action_noise_std=0.0)
+        check_env(env, skip_render_check=True)
+        env.close()
+
+    def test_check_env_racing_via_gym_make(self) -> None:
+        env = gym.make("LineFollowerRacing-v0", action_noise_std=0.0)
+        check_env(env.unwrapped, skip_render_check=True)
+        env.close()
+
+    def test_racing_reward_differs_from_line_following(self) -> None:
+        """Sanity check: racing reward differs from line-following reward."""
+        env_lf = LineFollowerEnv(reward_mode="line_following", action_noise_std=0.0)
+        env_rc = LineFollowerEnv(reward_mode="racing", action_noise_std=0.0)
+        _obs_lf, _ = env_lf.reset(seed=42)
+        _obs_rc, _ = env_rc.reset(seed=42)
+        action = np.array([0.5, 0.5], dtype=np.float32)
+        _, _reward_lf, _, _, info_lf = env_lf.step(action)
+        _, _reward_rc, _, _, info_rc = env_rc.step(action)
+        # They should generally differ (different reward functions)
+        assert info_lf["reward_mode"] == "line_following"
+        assert info_rc["reward_mode"] == "racing"
+        env_lf.close()
+        env_rc.close()

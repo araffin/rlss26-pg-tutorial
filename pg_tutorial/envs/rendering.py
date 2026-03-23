@@ -85,7 +85,7 @@ def _draw_road_quads(
     waypoints: NDArray[np.float64],
     normals: NDArray[np.float64],
     half_width: float,
-    colour: tuple[int, int, int],
+    colour: tuple[int, ...],
 ) -> None:
     """Draw the road as one filled quad per segment.
 
@@ -115,7 +115,7 @@ def _aa_thick_line(
     pt_a: NDArray[np.float64],
     pt_b: NDArray[np.float64],
     half_width: float,
-    colour: tuple[int, int, int],
+    colour: tuple[int, ...],
 ) -> None:
     """Draw an anti-aliased thick line segment as a filled polygon.
 
@@ -246,15 +246,16 @@ def render_track(
                 colour = COL_CP_PENDING
 
             # Draw a short line across the road at this waypoint
-            tick_hw = road_hw * 0.95  # almost full road width
+            tick_hw = road_hw * 0.99  # almost full road width
             left_pt = wp + normal * tick_hw
             right_pt = wp - normal * tick_hw
-            pygame_module.draw.line(
+            _aa_thick_line(
                 tick_surf,
+                pygame_module,
+                left_pt,
+                right_pt,
+                3 if cp_idx == 0 else 2.0,
                 colour,
-                (int(left_pt[0]), int(left_pt[1])),
-                (int(right_pt[0]), int(right_pt[1])),
-                3 if cp_idx == 0 else 2,
             )
         surface.blit(tick_surf, (0, 0))
 

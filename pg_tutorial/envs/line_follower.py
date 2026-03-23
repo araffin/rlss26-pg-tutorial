@@ -93,6 +93,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         Half-width of the "on-track" region used for rendering.
     off_track_threshold:
         Lateral distance beyond which the episode terminates.
+    reward_mode:
+        ``"line_following"`` (default) rewards staying close to the track
+        centre and heading along it.  ``"racing"`` rewards fast forward
+        progress around the track and gives a bonus for completing laps.
     render_mode:
         ``"human"`` for a pygame window, ``"rgb_array"`` for off-screen.
     screen_width:
@@ -120,8 +124,9 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         action_noise_std: float = 0.1,
         dt: float = 1 / 30,
         max_episode_steps: int = 2000,
-        track_width: float = 50.0,
+        track_width: float = 60.0,
         off_track_threshold: float = 80.0,
+        reward_mode: str = "line_following",
         render_mode: str | None = None,
         screen_width: int = 1000,
         screen_height: int = 800,
@@ -151,6 +156,11 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.max_episode_steps = max_episode_steps
         self.track_width = track_width
         self.off_track_threshold = off_track_threshold
+
+        # Reward mode
+        if reward_mode not in ("line_following", "racing"):
+            raise ValueError(f"reward_mode must be 'line_following' or 'racing', got {reward_mode!r}")
+        self.reward_mode = reward_mode
 
         # Rendering
         self.render_mode = render_mode
@@ -197,6 +207,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index: int = 0
         self.step_count: int = 0
         self.forward_speed: float = 0.0
+        self._prev_segment_index: int = 0
+        self.total_progress: float = 0.0
 
         # Checkpoints: 8 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
@@ -247,6 +259,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_lap_time = 0.0
         self.best_lap_time = float("inf")
         self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
+        self._prev_segment_index = 0
+        self.total_progress = 0.0
 
         observation = self._get_observation()
         info = self._get_info()
@@ -310,6 +324,16 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         # ---- track information & lap detection ----------------------------
         lateral_error, heading_error, _ = self._compute_track_errors()
 
+        # Track progress (how many segments the robot advanced this step)
+        seg_advance = (self.current_segment_index - self._prev_segment_index) % self.num_track_segments
+        # Clamp: if advance is more than half the track, robot probably went backwards
+        if seg_advance > self.num_track_segments // 2:
+            seg_advance -= self.num_track_segments  # negative = going backwards
+        self.total_progress += seg_advance
+        self._prev_segment_index = self.current_segment_index
+
+        prev_lap_count = self.lap_count
+
         # Checkpoint-based lap detection.
         # The robot must cross checkpoints 1, 2, ..., 7, 0 in order.
         # When checkpoint 0 (start/finish) is reached after all others,
@@ -331,12 +355,20 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_lap_time = (self.step_count - self.lap_start_step) * self.dt
 
         # ---- reward -------------------------------------------------------
-        # Penalise lateral and heading error, reward forward progress
-        lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
-        heading_penalty = -((heading_error / np.pi) ** 2)
-        forward_reward = max(forward_velocity * math.cos(heading_error), 0.0) * 0.01
-
-        reward: float = 1.0 + lateral_penalty + 0.5 * heading_penalty + forward_reward
+        if self.reward_mode == "racing":
+            # Reward forward progress along the track, penalise going off-track
+            progress_reward = float(seg_advance) / self.num_track_segments
+            # Small penalty for being far from center (to stay on track)
+            centering_penalty = -0.1 * (lateral_error / self.off_track_threshold) ** 2
+            # Big bonus for completing a lap
+            lap_bonus = 10.0 if (self._next_checkpoint == 1 and self.lap_count > prev_lap_count) else 0.0
+            reward: float = progress_reward + centering_penalty + lap_bonus
+        else:
+            # Original line-following reward
+            lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
+            heading_penalty = -((heading_error / np.pi) ** 2)
+            forward_reward = max(forward_velocity * math.cos(heading_error), 0.0) * 0.01
+            reward = 1.0 + lateral_penalty + 0.5 * heading_penalty + forward_reward
 
         # ---- termination / truncation -------------------------------------
         terminated = abs(lateral_error) > self.off_track_threshold
@@ -385,6 +417,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             "next_checkpoint": self._next_checkpoint,
             "num_checkpoints": self.num_checkpoints,
             "checkpoint_segment_indices": self.checkpoint_segment_indices,
+            "total_progress": self.total_progress,
+            "reward_mode": self.reward_mode,
         }
 
     # ---- track geometry ---------------------------------------------------
