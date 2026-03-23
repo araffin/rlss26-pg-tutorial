@@ -345,16 +345,16 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         track_name: str = "oval",
         wheel_base: float = 20.0,
         wheel_radius: float = 5.0,
-        max_wheel_speed: float = 10.0,
+        max_wheel_speed: float = 25.0,
         friction: float = 0.05,
-        inertia: float = 0.2,
+        inertia: float = 0.8,
         action_noise_std: float = 0.1,
         dt: float = 0.1,
         max_episode_steps: int = 2000,
-        track_width: float = 30.0,
+        track_width: float = 40.0,
         off_track_threshold: float = 80.0,
         render_mode: str | None = None,
-        screen_width: int = 800,
+        screen_width: int = 1000,
         screen_height: int = 600,
     ) -> None:
         super().__init__()
@@ -675,7 +675,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         # dashes evenly regardless of waypoint spacing.
         num_wp = len(self.track_waypoints)
         dash_on = 12.0
-        dash_off = 10.0
+        dash_off = 12.0
         dash_cycle = dash_on + dash_off
 
         cumulative_len = 0.0
@@ -703,7 +703,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
                         _COL_CENTER_LINE,
                         (round(pt_a[0]), round(pt_a[1])),
                         (round(pt_b[0]), round(pt_b[1])),
-                        2,
+                        5,
                     )
                     pos = draw_end
                 else:
