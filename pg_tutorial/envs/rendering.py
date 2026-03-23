@@ -36,6 +36,10 @@ COL_HUD_ACCENT = (255, 211, 105)
 COL_HUD_BEST = (0, 200, 140)
 COL_HUD_BG = (34, 40, 49, 200)
 
+# Drift visuals
+COL_DRIFT_VEL = (255, 100, 100, 180)  # red-ish — velocity vector when drifting
+COL_HUD_DRIFT = (255, 100, 100)  # red — HUD drift / slip angle warning
+
 # Checkpoint markers
 COL_CP_CROSSED = (0, 200, 140, 160)  # green — already crossed this lap
 COL_CP_NEXT = (255, 211, 105, 200)  # yellow — the next one to reach
@@ -275,8 +279,16 @@ def render_robot(
     closest_point: NDArray[np.float64],
     screen_width: int,
     screen_height: int,
+    vel_x: float = 0.0,
+    vel_y: float = 0.0,
+    slip_angle: float = 0.0,
 ) -> None:
-    """Draw closest-point indicator, robot body, wheels, and heading line."""
+    """Draw closest-point indicator, robot body, wheels, and heading line.
+
+    When *vel_x* / *vel_y* are non-zero **and** the slip angle is
+    appreciable, a red velocity-vector arrow is drawn so the player can
+    see the drift direction.
+    """
     # -- line from robot to closest point on track --------------------------
     closest_surf = pygame_module.Surface((screen_width, screen_height), pygame_module.SRCALPHA)
     pygame_module.draw.line(
@@ -346,6 +358,32 @@ def render_robot(
     )
     _aa_thick_line(surface, pygame_module, heading_start, heading_end, 2, COL_HEADING)
 
+    # -- drift velocity vector (only when slip angle is noticeable) ---------
+    speed = math.hypot(vel_x, vel_y)
+    if speed > 5.0 and abs(slip_angle) > math.radians(3.0):
+        # Scale the vector so it's visible but doesn't dominate the view.
+        # Length proportional to speed, capped for readability.
+        vec_scale = min(speed * 0.08, body_radius * 2.5) / max(speed, 1e-9)
+        vel_end_x = robot_x + vel_x * vec_scale * 30.0
+        vel_end_y = robot_y + vel_y * vec_scale * 30.0
+
+        vel_surf = pygame_module.Surface((screen_width, screen_height), pygame_module.SRCALPHA)
+        vel_start = np.array([robot_x, robot_y], dtype=np.float64)
+        vel_end = np.array([vel_end_x, vel_end_y], dtype=np.float64)
+        _aa_thick_line(vel_surf, pygame_module, vel_start, vel_end, 1.5, COL_DRIFT_VEL)
+
+        # Small arrowhead
+        arrow_len = 6.0
+        vel_angle = math.atan2(vel_y, vel_x)
+        for sign in (-1.0, 1.0):
+            wing_angle = vel_angle + math.pi + sign * 0.45
+            wing_end = np.array(
+                [vel_end_x + arrow_len * math.cos(wing_angle), vel_end_y + arrow_len * math.sin(wing_angle)],
+                dtype=np.float64,
+            )
+            _aa_thick_line(vel_surf, pygame_module, vel_end, wing_end, 1.0, COL_DRIFT_VEL)
+        surface.blit(vel_surf, (0, 0))
+
 
 # ---------------------------------------------------------------------------
 # HUD rendering
@@ -375,15 +413,19 @@ def render_hud(
     best_lap_time: float = float("inf"),
     next_checkpoint: int = 0,
     num_checkpoints: int = 8,
+    drift: bool = False,
+    slip_angle: float = 0.0,
+    lateral_velocity: float = 0.0,
 ) -> None:
     """Draw a semi-transparent HUD overlay in the top-left corner.
 
-    The HUD has two sections:
+    The HUD has two sections (three when *drift* is ``True``):
 
     * **Top** (larger font) — lap counter, speed, current lap time and best
-      lap time.
+      lap time.  When drift is active a ``SLIP`` indicator is appended.
     * **Bottom** (smaller font) — step counter, lateral / heading errors and
-      wheel speeds.
+      wheel speeds.  When drift is active, slip angle and lateral velocity
+      are appended.
     """
     font_big = pygame_module.font.SysFont("monospace", 20, bold=True)
     font_small = pygame_module.font.SysFont("monospace", 13)
@@ -414,6 +456,10 @@ def render_hud(
             COL_HUD_BEST if best_lap_time < float("inf") else COL_HUD_LABEL,
         ),
     ]
+    if drift:
+        slip_deg = math.degrees(slip_angle)
+        slip_colour = COL_HUD_DRIFT if abs(slip_deg) > 5.0 else COL_HUD_VALUE
+        top_items.append(("SLIP", f"{slip_deg:+.1f}\u00b0", slip_colour))
     big_line_height = 24
 
     # -- bottom section (small font) ----------------------------------------
@@ -426,6 +472,8 @@ def render_hud(
             COL_HUD_TEXT,
         ),
     ]
+    if drift:
+        bottom_lines.append((f"lat vel: {lateral_velocity:+.1f}", COL_HUD_TEXT))
     small_line_height = 17
 
     # -- measure widths to size the background ------------------------------

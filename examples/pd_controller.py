@@ -7,6 +7,8 @@ Run with::
     python examples/pd_controller.py --track oval
     python examples/pd_controller.py --track s_track
     python examples/pd_controller.py --track hairpin
+    python examples/pd_controller.py --drift
+    python examples/pd_controller.py --drift --grip 0.5 --yaw-damping 0.7
 
 Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
 
@@ -23,6 +25,7 @@ changes.
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -105,7 +108,7 @@ def compute_pd_action(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run a PD controller on the LineFollower-v0 environment.",
+        description="Run a PD controller on the LineFollower environment.",
     )
     parser.add_argument(
         "--track",
@@ -120,6 +123,24 @@ def parse_args() -> argparse.Namespace:
         help="Use the racing reward variant (LineFollowerRacing-v0).",
     )
     parser.add_argument(
+        "--drift",
+        action="store_true",
+        help="Enable drift / tyre-slip dynamics (LineFollowerDrift-v0).",
+    )
+    parser.add_argument(
+        "--grip",
+        type=float,
+        default=0.85,
+        help="Lateral grip coefficient when drift is enabled (0=ice, 1=perfect; default: 0.85).",
+    )
+    parser.add_argument(
+        "--yaw-damping",
+        type=float,
+        default=0.3,
+        dest="yaw_damping",
+        help="Yaw damping when drift is enabled (0=no momentum, ~1=very spinny; default: 0.3).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -132,14 +153,27 @@ def main() -> None:
     """Run one episode of the PD controller with rendering."""
     args = parse_args()
 
-    env_id = "LineFollowerRacing-v0" if args.racing else "LineFollower-v0"
-    env = gym.make(
-        env_id,
-        render_mode="human",
-        track_name=args.track,
-        friction=0.05,
-        action_noise_std=0.05,
-    )
+    # Select the environment id
+    if args.racing:
+        env_id = "LineFollowerRacing-v0"
+    elif args.drift:
+        env_id = "LineFollowerDrift-v0"
+    else:
+        env_id = "LineFollower-v0"
+
+    # Build keyword arguments — drift params are only relevant for the
+    # drift-based environments.
+    make_kwargs: dict[str, Any] = {
+        "render_mode": "human",
+        "track_name": args.track,
+        "friction": 0.05,
+        "action_noise_std": 0.05,
+    }
+    if args.drift or args.racing:
+        make_kwargs["lateral_grip"] = args.grip
+        make_kwargs["yaw_damping"] = args.yaw_damping
+
+    env = gym.make(env_id, **make_kwargs)
 
     observation, _info = env.reset(seed=args.seed)
     env.render()

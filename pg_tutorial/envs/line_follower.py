@@ -58,6 +58,13 @@ def _closest_point_on_segment(
 class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
     """A 2-D differential-drive robot that must follow a line track.
 
+    This base environment uses **no-slip** differential-drive kinematics and
+    a **line-following** reward that encourages staying close to the track
+    centre while moving forward.
+
+    For drift / tyre-slip dynamics and alternative reward modes see
+    :class:`~pg_tutorial.envs.drift.LineFollowerDriftEnv`.
+
     Parameters
     ----------
     track_waypoints:
@@ -93,10 +100,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         Half-width of the "on-track" region used for rendering.
     off_track_threshold:
         Lateral distance beyond which the episode terminates.
-    reward_mode:
-        ``"line_following"`` (default) rewards staying close to the track
-        centre and heading along it.  ``"racing"`` rewards fast forward
-        progress around the track and gives a bonus for completing laps.
     render_mode:
         ``"human"`` for a pygame window, ``"rgb_array"`` for off-screen.
     screen_width:
@@ -126,7 +129,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         max_episode_steps: int = 2000,
         track_width: float = 60.0,
         off_track_threshold: float = 80.0,
-        reward_mode: str = "line_following",
         render_mode: str | None = None,
         screen_width: int = 1000,
         screen_height: int = 800,
@@ -156,11 +158,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.max_episode_steps = max_episode_steps
         self.track_width = track_width
         self.off_track_threshold = off_track_threshold
-
-        # Reward mode
-        if reward_mode not in ("line_following", "racing"):
-            raise ValueError(f"reward_mode must be 'line_following' or 'racing', got {reward_mode!r}")
-        self.reward_mode = reward_mode
 
         # Rendering
         self.render_mode = render_mode
@@ -207,8 +204,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index: int = 0
         self.step_count: int = 0
         self.forward_speed: float = 0.0
-        self._prev_segment_index: int = 0
-        self.total_progress: float = 0.0
 
         # Checkpoints: 8 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
@@ -219,7 +214,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.num_checkpoints: int = num_checkpoints
         # How close (in segment index) the robot must be to a checkpoint
         # for it to count as crossed.
-        # self._checkpoint_window: int = max(self.num_track_segments // (num_checkpoints * 2), 2)
         self._checkpoint_window: int = 2
 
         # Lap tracking
@@ -259,20 +253,17 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_lap_time = 0.0
         self.best_lap_time = float("inf")
         self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
-        self._prev_segment_index = 0
-        self.total_progress = 0.0
 
         observation = self._get_observation()
         info = self._get_info()
         return observation, info
 
-    def step(
-        self,
-        action: NDArray[np.float32],
-    ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
-        self.step_count += 1
+    def _apply_action(self, action: NDArray[np.float32]) -> tuple[float, float]:
+        """Decode action, apply inertia / friction, return (forward_velocity, angular_velocity).
 
-        # ---- decode action ------------------------------------------------
+        This is factored out so subclasses can call it before adding their
+        own dynamics (e.g. drift).
+        """
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
         target_left = float(action[0]) * self.max_wheel_speed
         target_right = float(action[1]) * self.max_wheel_speed
@@ -295,14 +286,17 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.left_wheel_speed = float(np.clip(self.left_wheel_speed, -self.max_wheel_speed, self.max_wheel_speed))
         self.right_wheel_speed = float(np.clip(self.right_wheel_speed, -self.max_wheel_speed, self.max_wheel_speed))
 
-        # ---- differential-drive kinematics --------------------------------
+        # Differential-drive forward / angular velocities
         left_linear = self.left_wheel_speed * self.wheel_radius
         right_linear = self.right_wheel_speed * self.wheel_radius
-
         forward_velocity = (left_linear + right_linear) / 2.0
-        self.forward_speed = forward_velocity
         angular_velocity = (right_linear - left_linear) / self.wheel_base
 
+        self.forward_speed = forward_velocity
+        return forward_velocity, angular_velocity
+
+    def _integrate_kinematics(self, forward_velocity: float, angular_velocity: float) -> None:
+        """No-slip differential-drive position integration."""
         if abs(angular_velocity) < 1e-9:
             # Straight-line motion
             self.robot_x += forward_velocity * math.cos(self.robot_theta) * self.dt
@@ -321,23 +315,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             math.cos(self.robot_theta),
         )
 
-        # ---- track information & lap detection ----------------------------
-        lateral_error, heading_error, _ = self._compute_track_errors()
-
-        # Track progress (how many segments the robot advanced this step)
-        seg_advance = (self.current_segment_index - self._prev_segment_index) % self.num_track_segments
-        # Clamp: if advance is more than half the track, robot probably went backwards
-        if seg_advance > self.num_track_segments // 2:
-            seg_advance -= self.num_track_segments  # negative = going backwards
-        self.total_progress += seg_advance
-        self._prev_segment_index = self.current_segment_index
-
-        prev_lap_count = self.lap_count
-
-        # Checkpoint-based lap detection.
-        # The robot must cross checkpoints 1, 2, ..., 7, 0 in order.
-        # When checkpoint 0 (start/finish) is reached after all others,
-        # a lap is recorded.
+    def _update_lap_detection(self) -> None:
+        """Advance checkpoint-based lap detection state."""
         cp_seg = self.checkpoint_segment_indices[self._next_checkpoint]
         seg_diff = (self.current_segment_index - cp_seg) % self.num_track_segments
         # seg_diff is in [0, N); values near 0 or near N mean "close"
@@ -354,21 +333,31 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
         self.current_lap_time = (self.step_count - self.lap_start_step) * self.dt
 
+    def _compute_reward(self, forward_velocity: float, lateral_error: float, heading_error: float) -> float:
+        """Line-following reward.  Subclasses can override for other modes."""
+        lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
+        heading_penalty = -((heading_error / np.pi) ** 2)
+        forward_reward = max(forward_velocity * math.cos(heading_error), 0.0) * 0.01
+        return 1.0 + lateral_penalty + 0.5 * heading_penalty + forward_reward
+
+    def step(
+        self,
+        action: NDArray[np.float32],
+    ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
+        self.step_count += 1
+
+        # ---- action decoding + wheel dynamics -----------------------------
+        forward_velocity, angular_velocity = self._apply_action(action)
+
+        # ---- position integration -----------------------------------------
+        self._integrate_kinematics(forward_velocity, angular_velocity)
+
+        # ---- track information & lap detection ----------------------------
+        lateral_error, heading_error, _ = self._compute_track_errors()
+        self._update_lap_detection()
+
         # ---- reward -------------------------------------------------------
-        if self.reward_mode == "racing":
-            # Reward forward progress along the track, penalise going off-track
-            progress_reward = float(seg_advance) / self.num_track_segments
-            # Small penalty for being far from center (to stay on track)
-            centering_penalty = -0.1 * (lateral_error / self.off_track_threshold) ** 2
-            # Big bonus for completing a lap
-            lap_bonus = 10.0 if (self._next_checkpoint == 1 and self.lap_count > prev_lap_count) else 0.0
-            reward: float = progress_reward + centering_penalty + lap_bonus
-        else:
-            # Original line-following reward
-            lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
-            heading_penalty = -((heading_error / np.pi) ** 2)
-            forward_reward = max(forward_velocity * math.cos(heading_error), 0.0) * 0.01
-            reward = 1.0 + lateral_penalty + 0.5 * heading_penalty + forward_reward
+        reward: float = self._compute_reward(forward_velocity, lateral_error, heading_error)
 
         # ---- termination / truncation -------------------------------------
         terminated = abs(lateral_error) > self.off_track_threshold
@@ -417,8 +406,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             "next_checkpoint": self._next_checkpoint,
             "num_checkpoints": self.num_checkpoints,
             "checkpoint_segment_indices": self.checkpoint_segment_indices,
-            "total_progress": self.total_progress,
-            "reward_mode": self.reward_mode,
         }
 
     # ---- track geometry ---------------------------------------------------
@@ -516,35 +503,11 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
         # -- robot ----------------------------------------------------------
         _lat_err, _head_err, closest_pt = self._compute_track_errors()
-        render_robot(
-            surface,
-            pygame,
-            self.robot_x,
-            self.robot_y,
-            self.robot_theta,
-            self.wheel_base,
-            closest_pt,
-            self.screen_width,
-            self.screen_height,
-        )
+        self._render_robot(surface, pygame, closest_pt)
 
         # -- HUD ------------------------------------------------------------
         lateral_error, heading_error, _ = self._compute_track_errors()
-        render_hud(
-            surface,
-            pygame,
-            step_count=self.step_count,
-            lateral_error=lateral_error,
-            heading_error=heading_error,
-            left_wheel_speed=self.left_wheel_speed,
-            right_wheel_speed=self.right_wheel_speed,
-            forward_speed=self.forward_speed,
-            lap_count=self.lap_count,
-            current_lap_time=self.current_lap_time,
-            best_lap_time=self.best_lap_time,
-            next_checkpoint=self._next_checkpoint,
-            num_checkpoints=self.num_checkpoints,
-        )
+        self._render_hud(surface, pygame, lateral_error, heading_error)
 
         if self.render_mode == "human":
             pygame.event.pump()
@@ -558,6 +521,38 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             np.array(pygame.surfarray.pixels3d(surface)),
             axes=(1, 0, 2),
         ).copy()
+
+    def _render_robot(self, surface: Any, pygame_module: Any, closest_pt: NDArray[np.float64]) -> None:
+        """Draw the robot.  Subclasses can override to add drift visuals."""
+        render_robot(
+            surface,
+            pygame_module,
+            self.robot_x,
+            self.robot_y,
+            self.robot_theta,
+            self.wheel_base,
+            closest_pt,
+            self.screen_width,
+            self.screen_height,
+        )
+
+    def _render_hud(self, surface: Any, pygame_module: Any, lateral_error: float, heading_error: float) -> None:
+        """Draw the HUD.  Subclasses can override to add extra fields."""
+        render_hud(
+            surface,
+            pygame_module,
+            step_count=self.step_count,
+            lateral_error=lateral_error,
+            heading_error=heading_error,
+            left_wheel_speed=self.left_wheel_speed,
+            right_wheel_speed=self.right_wheel_speed,
+            forward_speed=self.forward_speed,
+            lap_count=self.lap_count,
+            current_lap_time=self.current_lap_time,
+            best_lap_time=self.best_lap_time,
+            next_checkpoint=self._next_checkpoint,
+            num_checkpoints=self.num_checkpoints,
+        )
 
     def close(self) -> None:
         if self._pygame_initialised:
