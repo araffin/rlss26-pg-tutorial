@@ -22,9 +22,9 @@ COL_GRID = (44, 50, 59)
 COL_TRACK_FILL = (57, 62, 70)
 COL_TRACK_EDGE = (78, 85, 95)
 COL_CENTER_LINE = (255, 211, 105)
-COL_ROBOT_BODY = (0, 173, 181)
+COL_ROBOT_BODY = (0, 160, 170)
 COL_ROBOT_OUTLINE = (0, 140, 148)
-COL_HEADING = (238, 238, 238)
+COL_HEADING = (200, 200, 200)
 COL_WHEEL = (218, 218, 218)
 COL_WHEEL_OUTLINE = (130, 130, 130)
 COL_CLOSEST_LINE = (255, 211, 105, 100)
@@ -280,7 +280,7 @@ def render_robot(
     pygame_module.gfxdraw.aacircle(surface, robot_px, robot_py, body_radius, COL_ROBOT_OUTLINE)
 
     # Heading indicator (simple line from centre in the direction of travel)
-    heading_length = body_radius + 6
+    heading_length = body_radius + 15
     heading_end_x = robot_px + int(heading_length * math.cos(robot_theta))
     heading_end_y = robot_py + int(heading_length * math.sin(robot_theta))
     pygame_module.draw.line(
@@ -288,7 +288,7 @@ def render_robot(
         COL_HEADING,
         (robot_px, robot_py),
         (heading_end_x, heading_end_y),
-        width=3,
+        width=5,
     )
 
 
