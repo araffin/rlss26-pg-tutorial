@@ -1,4 +1,4 @@
-LINT_PATHS=pg_tutorial/ tests/
+LINT_PATHS=pg_tutorial/ tests/ examples/
 
 pytest:
 	python3 -m pytest --cov-report html --cov-report term --cov=. -v --color=yes -m "not expensive"
