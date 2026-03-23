@@ -4,6 +4,12 @@
 Run with::
 
     python examples/pd_controller.py
+    python examples/pd_controller.py --track oval
+    python examples/pd_controller.py --track s_track
+    python examples/pd_controller.py --track hairpin
+
+Available tracks: ``oval`` (default), ``figure_eight``, ``s_track``,
+``rounded_l``, ``hairpin``.
 
 The controller reads the *lateral error* and *heading error* from the
 observation vector and computes a steering correction using proportional
@@ -17,11 +23,14 @@ changes.
 
 from __future__ import annotations
 
+import argparse
+
 import gymnasium as gym
 import numpy as np
 
 # Register the custom environment
 import pg_tutorial  # noqa: F401
+from pg_tutorial.envs.line_follower import TRACK_BUILDERS
 
 # ---------------------------------------------------------------------------
 # Observation indices (must match LineFollowerEnv._get_observation)
@@ -94,16 +103,40 @@ def compute_pd_action(
     return action, lateral_error, heading_error
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Run a PD controller on the LineFollower-v0 environment.",
+    )
+    parser.add_argument(
+        "--track",
+        type=str,
+        default="oval",
+        choices=list(TRACK_BUILDERS.keys()),
+        help="Name of the built-in track to use (default: oval).",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for the environment (default: 42).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """Run one episode of the PD controller with rendering."""
+    args = parse_args()
+
     env = gym.make(
         "LineFollower-v0",
         render_mode="human",
+        track_name=args.track,
         friction=0.05,
         action_noise_std=0.05,
     )
 
-    observation, _ = env.reset(seed=42)
+    observation, _info = env.reset(seed=args.seed)
     env.render()
 
     prev_lateral_error: float = float(observation[IDX_LATERAL_ERROR])
