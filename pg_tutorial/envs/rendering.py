@@ -30,7 +30,11 @@ COL_WHEEL_OUTLINE = (130, 130, 130)
 COL_CLOSEST_LINE = (255, 211, 105, 100)
 COL_CLOSEST_DOT = (255, 211, 105)
 COL_HUD_TEXT = (200, 200, 200)
-COL_HUD_BG = (34, 40, 49, 180)
+COL_HUD_LABEL = (140, 140, 140)
+COL_HUD_VALUE = (238, 238, 238)
+COL_HUD_ACCENT = (255, 211, 105)
+COL_HUD_BEST = (0, 200, 140)
+COL_HUD_BG = (34, 40, 49, 200)
 
 # ---------------------------------------------------------------------------
 # Centre-line dash width (pixels).  Increase this value to make the dashed
@@ -299,6 +303,15 @@ def render_robot(
 # ---------------------------------------------------------------------------
 
 
+def _format_time(seconds: float) -> str:
+    """Format a time in seconds as ``M:SS.s`` or ``--:--.-`` when infinite."""
+    if seconds == float("inf"):
+        return "--:--.--"
+    minutes = int(seconds) // 60
+    remaining = seconds - minutes * 60
+    return f"{minutes}:{remaining:05.2f}"
+
+
 def render_hud(
     surface: Any,
     pygame_module: Any,
@@ -307,30 +320,91 @@ def render_hud(
     heading_error: float,
     left_wheel_speed: float,
     right_wheel_speed: float,
+    forward_speed: float = 0.0,
+    lap_count: int = 0,
+    current_lap_time: float = 0.0,
+    best_lap_time: float = float("inf"),
 ) -> None:
-    """Draw a semi-transparent HUD overlay in the top-left corner."""
-    font = pygame_module.font.SysFont("monospace", 14)
-    hud_lines = [
-        f"step: {step_count}",
-        f"lat err: {lateral_error:+.1f}",
-        f"head err: {math.degrees(heading_error):+.1f}\u00b0",
-        f"wheels L/R: {left_wheel_speed:+.2f} / {right_wheel_speed:+.2f}",
-    ]
-    line_height = 18
-    hud_padding = 6
-    hud_width = max(font.size(line)[0] for line in hud_lines) + 2 * hud_padding
-    hud_height = len(hud_lines) * line_height + 2 * hud_padding
+    """Draw a semi-transparent HUD overlay in the top-left corner.
 
+    The HUD has two sections:
+
+    * **Top** (larger font) — lap counter, speed, current lap time and best
+      lap time.
+    * **Bottom** (smaller font) — step counter, lateral / heading errors and
+      wheel speeds.
+    """
+    font_big = pygame_module.font.SysFont("monospace", 20, bold=True)
+    font_small = pygame_module.font.SysFont("monospace", 13)
+
+    padding = 8
+    section_gap = 6  # vertical gap between top and bottom sections
+
+    # -- top section (big font) ---------------------------------------------
+    speed_px_per_s = abs(forward_speed)
+    top_items: list[tuple[str, str, tuple[int, ...]]] = [
+        ("LAP", f"{lap_count}", COL_HUD_ACCENT),
+        ("SPEED", f"{speed_px_per_s:.1f}", COL_HUD_VALUE),
+        ("TIME", _format_time(current_lap_time), COL_HUD_VALUE),
+        (
+            "BEST",
+            _format_time(best_lap_time),
+            COL_HUD_BEST if best_lap_time < float("inf") else COL_HUD_LABEL,
+        ),
+    ]
+    big_line_height = 24
+
+    # -- bottom section (small font) ----------------------------------------
+    bottom_lines: list[tuple[str, tuple[int, ...]]] = [
+        (f"step: {step_count}", COL_HUD_TEXT),
+        (f"lat err: {lateral_error:+.1f}", COL_HUD_TEXT),
+        (f"head err: {math.degrees(heading_error):+.1f}\u00b0", COL_HUD_TEXT),
+        (
+            f"wheels L/R: {left_wheel_speed:+.2f} / {right_wheel_speed:+.2f}",
+            COL_HUD_TEXT,
+        ),
+    ]
+    small_line_height = 17
+
+    # -- measure widths to size the background ------------------------------
+    top_widths: list[int] = []
+    for label, value, _colour in top_items:
+        label_w = font_small.size(label)[0]
+        value_w = font_big.size(value)[0]
+        top_widths.append(label_w + 4 + value_w)
+
+    bottom_widths = [font_small.size(text)[0] for text, _c in bottom_lines]
+
+    hud_width = max(*top_widths, *bottom_widths) + 2 * padding
+    top_height = len(top_items) * big_line_height
+    bottom_height = len(bottom_lines) * small_line_height
+    hud_height = padding + top_height + section_gap + bottom_height + padding
+
+    # -- draw background ----------------------------------------------------
+    hud_x = 4
+    hud_y = 4
     hud_bg = pygame_module.Surface((hud_width, hud_height), pygame_module.SRCALPHA)
     hud_bg.fill(COL_HUD_BG)
-    surface.blit(hud_bg, (4, 4))
+    surface.blit(hud_bg, (hud_x, hud_y))
 
-    for line_idx, text in enumerate(hud_lines):
-        text_surface = font.render(text, True, COL_HUD_TEXT)
+    # -- draw top section ---------------------------------------------------
+    cursor_y = hud_y + padding
+    for label, value, colour in top_items:
+        label_surf = font_small.render(label, True, COL_HUD_LABEL)
+        value_surf = font_big.render(value, True, colour)
+        surface.blit(label_surf, (hud_x + padding, cursor_y + 4))
         surface.blit(
-            text_surface,
-            (4 + hud_padding, 4 + hud_padding + line_idx * line_height),
+            value_surf,
+            (hud_x + padding + label_surf.get_width() + 4, cursor_y),
         )
+        cursor_y += big_line_height
+
+    # -- draw bottom section ------------------------------------------------
+    cursor_y += section_gap
+    for text, colour in bottom_lines:
+        text_surf = font_small.render(text, True, colour)
+        surface.blit(text_surf, (hud_x + padding, cursor_y))
+        cursor_y += small_line_height
 
 
 # ---------------------------------------------------------------------------

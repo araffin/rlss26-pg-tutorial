@@ -114,17 +114,17 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         track_name: str = "oval",
         wheel_base: float = 20.0,
         wheel_radius: float = 5.0,
-        max_wheel_speed: float = 40.0,
+        max_wheel_speed: float = 150.0,
         friction: float = 0.05,
         inertia: float = 0.8,
         action_noise_std: float = 0.1,
-        dt: float = 0.1,
+        dt: float = 1 / 30,
         max_episode_steps: int = 2000,
         track_width: float = 50.0,
         off_track_threshold: float = 80.0,
         render_mode: str | None = None,
         screen_width: int = 1000,
-        screen_height: int = 600,
+        screen_height: int = 800,
     ) -> None:
         super().__init__()
 
@@ -196,6 +196,14 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.right_wheel_speed: float = 0.0
         self.current_segment_index: int = 0
         self.step_count: int = 0
+        self.forward_speed: float = 0.0
+
+        # Lap tracking
+        self.lap_count: int = 0
+        self.lap_start_step: int = 0
+        self.current_lap_time: float = 0.0
+        self.best_lap_time: float = float("inf")
+        self._prev_segment_index: int = 0
 
     # ---- reset / step -----------------------------------------------------
 
@@ -219,6 +227,14 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.right_wheel_speed = 0.0
         self.current_segment_index = 0
         self.step_count = 0
+        self.forward_speed = 0.0
+
+        # Lap tracking
+        self.lap_count = 0
+        self.lap_start_step = 0
+        self.current_lap_time = 0.0
+        self.best_lap_time = float("inf")
+        self._prev_segment_index = 0
 
         observation = self._get_observation()
         info = self._get_info()
@@ -258,6 +274,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         right_linear = self.right_wheel_speed * self.wheel_radius
 
         forward_velocity = (left_linear + right_linear) / 2.0
+        self.forward_speed = forward_velocity
         angular_velocity = (right_linear - left_linear) / self.wheel_base
 
         if abs(angular_velocity) < 1e-9:
@@ -278,8 +295,27 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             math.cos(self.robot_theta),
         )
 
-        # ---- track information --------------------------------------------
+        # ---- track information & lap detection ----------------------------
+        prev_seg = self.current_segment_index
         lateral_error, heading_error, _ = self._compute_track_errors()
+        new_seg = self.current_segment_index
+
+        # Detect forward crossing of the start/finish line (segment 0).
+        # A lap is counted when the segment index wraps from near the end of
+        # the track back to near the start while travelling forward.
+        wrap_threshold = self.num_track_segments // 4
+        if prev_seg > self.num_track_segments - wrap_threshold and new_seg < wrap_threshold:
+            elapsed_steps = self.step_count - self.lap_start_step
+            if elapsed_steps > wrap_threshold:
+                # Only count if enough steps have passed (avoids spurious
+                # detections at episode start or from jitter).
+                lap_time = elapsed_steps * self.dt
+                self.lap_count += 1
+                if lap_time < self.best_lap_time:
+                    self.best_lap_time = lap_time
+                self.lap_start_step = self.step_count
+
+        self.current_lap_time = (self.step_count - self.lap_start_step) * self.dt
 
         # ---- reward -------------------------------------------------------
         # Penalise lateral and heading error, reward forward progress
@@ -329,6 +365,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             "heading_error": heading_error,
             "closest_point": closest,
             "segment_index": self.current_segment_index,
+            "forward_speed": self.forward_speed,
+            "lap_count": self.lap_count,
+            "current_lap_time": self.current_lap_time,
+            "best_lap_time": self.best_lap_time,
         }
 
     # ---- track geometry ---------------------------------------------------
@@ -436,11 +476,15 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         render_hud(
             surface,
             pygame,
-            self.step_count,
-            lateral_error,
-            heading_error,
-            self.left_wheel_speed,
-            self.right_wheel_speed,
+            step_count=self.step_count,
+            lateral_error=lateral_error,
+            heading_error=heading_error,
+            left_wheel_speed=self.left_wheel_speed,
+            right_wheel_speed=self.right_wheel_speed,
+            forward_speed=self.forward_speed,
+            lap_count=self.lap_count,
+            current_lap_time=self.current_lap_time,
+            best_lap_time=self.best_lap_time,
         )
 
         if self.render_mode == "human":
