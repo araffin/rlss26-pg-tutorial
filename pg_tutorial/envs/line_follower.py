@@ -221,6 +221,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.lap_start_step: int = 0
         self.current_lap_time: float = 0.0
         self.best_lap_time: float = float("inf")
+        self.last_lap_time: float = float("inf")
         self._next_checkpoint: int = 1  # start past CP 0 (robot spawns there)
 
     # ---- reset / step -----------------------------------------------------
@@ -251,7 +252,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.lap_count = 0
         self.lap_start_step = 0
         self.current_lap_time = 0.0
-        self.best_lap_time = float("inf")
+        # self.best_lap_time = float("inf")
         self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
 
         observation = self._get_observation()
@@ -328,6 +329,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
                 self.lap_count += 1
                 if lap_time < self.best_lap_time:
                     self.best_lap_time = lap_time
+                self.last_lap_time = lap_time
                 self.lap_start_step = self.step_count
             self._next_checkpoint = (self._next_checkpoint + 1) % self.num_checkpoints
 
@@ -403,6 +405,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             "lap_count": self.lap_count,
             "current_lap_time": self.current_lap_time,
             "best_lap_time": self.best_lap_time,
+            "last_lap_time": self.last_lap_time,
             "next_checkpoint": self._next_checkpoint,
             "num_checkpoints": self.num_checkpoints,
             "checkpoint_segment_indices": self.checkpoint_segment_indices,
