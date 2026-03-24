@@ -123,10 +123,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         wheel_radius: float = 5.0,
         max_wheel_speed: float = 150.0,
         friction: float = 0.05,
-        inertia: float = 0.92,
+        inertia: float = 0.95,
         action_noise_std: float = 0.05,
         dt: float = 1 / 30,
-        max_episode_steps: int = 2000,
+        max_episode_steps: int = 1000,
         track_width: float = 60.0,
         off_track_threshold: float = 80.0,
         render_mode: str | None = None,
@@ -220,11 +220,14 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.lap_count: int = 0
         self.lap_start_step: int = 0
         self.current_lap_time: float = 0.0
-        self.best_lap_time: float = float("inf")
-        self.last_lap_time: float = float("inf")
+        self.best_lap_time = float("inf")
+        self.last_lap_time = float("inf")
         self._next_checkpoint: int = 1  # start past CP 0 (robot spawns there)
 
     # ---- reset / step -----------------------------------------------------
+    def reset_lap_times(self):
+        self.best_lap_time = float("inf")
+        self.last_lap_time = float("inf")
 
     def reset(
         self,
