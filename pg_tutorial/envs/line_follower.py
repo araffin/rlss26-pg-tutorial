@@ -123,7 +123,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         wheel_radius: float = 5.0,
         max_wheel_speed: float = 150.0,
         friction: float = 0.05,
-        inertia: float = 0.8,
+        inertia: float = 0.92,
         action_noise_std: float = 0.1,
         dt: float = 1 / 30,
         max_episode_steps: int = 2000,
@@ -362,7 +362,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         reward: float = self._compute_reward(forward_velocity, lateral_error, heading_error)
 
         # ---- termination / truncation -------------------------------------
-        terminated = abs(lateral_error) > self.off_track_threshold
+        # Off-track or going backward
+        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0
         truncated = self.step_count >= self.max_episode_steps
 
         observation = self._get_observation()
@@ -420,7 +421,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         robot_pos = np.array([self.robot_x, self.robot_y], dtype=np.float64)
 
         # Search a window of segments around the current best to avoid O(N)
-        search_half_window = 15
+        search_half_window = 10
         best_dist_sq = np.inf
         best_closest = self.track_waypoints[0].copy()
         best_seg_idx = self.current_segment_index
