@@ -51,7 +51,7 @@ KD_LATERAL: float = 0.005
 KP_HEADING: float = 0.8
 KD_HEADING: float = 0.1
 
-BASE_SPEED: float = 0.4  # normalised wheel speed in [-1, 1]
+BASE_SPEED: float = 1.0  # normalised wheel speed in [-1, 1]
 
 
 def compute_pd_action(
@@ -181,7 +181,6 @@ def main() -> None:
 
     prev_lateral_error: float = float(observation[IDX_LATERAL_ERROR])
     prev_heading_error: float = float(observation[IDX_HEADING_ERROR])
-    dt: float = 0.1  # must match the env default
 
     total_reward: float = 0.0
     step_count: int = 0
@@ -194,7 +193,7 @@ def main() -> None:
             observation,
             prev_lateral_error,
             prev_heading_error,
-            dt,
+            env.unwrapped.dt,  # type: ignore[attr-defined]
         )
 
         observation, reward, terminated, truncated, _info = env.step(action)
