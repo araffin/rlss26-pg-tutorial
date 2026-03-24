@@ -86,15 +86,16 @@ class RacingInfoCallback(BaseCallback):
 # ---------------------------------------------------------------------------
 
 
-def train(args: argparse.Namespace) -> None:
+def train(args: argparse.Namespace, env_id: str) -> None:
     """Run SAC training."""
     log_dir = args.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
     n_envs = 1
+
     # -- training env (Monitor is added automatically by make_vec_env) ------
     vec_env = make_vec_env(
-        "LineFollowerDrift-v0",
+        env_id,
         n_envs=n_envs,
         env_kwargs=DEFAULT_ENV_KWARGS,
     )
@@ -102,7 +103,7 @@ def train(args: argparse.Namespace) -> None:
 
     # -- eval env -----------------------------------------------------------
     eval_env = make_vec_env(
-        "LineFollowerDrift-v0",
+        env_id,
         n_envs=1,
         env_kwargs=DEFAULT_ENV_KWARGS,
     )
@@ -177,7 +178,7 @@ def train(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def evaluate(args: argparse.Namespace) -> None:
+def evaluate(args: argparse.Namespace, env_id: str) -> None:
     """Load a trained SAC model and run episodes with rendering."""
     model_path: str = args.model_path
     if not model_path:
@@ -190,7 +191,7 @@ def evaluate(args: argparse.Namespace) -> None:
 
     # Wrap in VecEnv + VecNormalize to match training normalisation
     eval_kwargs = {**DEFAULT_ENV_KWARGS, "render_mode": "human"}
-    vec_env = make_vec_env("LineFollowerDrift-v0", n_envs=1, env_kwargs=eval_kwargs)
+    vec_env = make_vec_env(env_id, n_envs=1, env_kwargs=eval_kwargs)
     if os.path.isfile(vec_normalize_path):
         print(f"Loading VecNormalize stats from {vec_normalize_path}")
         vec_env = VecNormalize.load(vec_normalize_path, vec_env)
@@ -271,13 +272,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    env_id = "LineFollowerDrift-v0"
     if args.eval:
         try:
-            evaluate(args)
+            evaluate(args, env_id)
         except KeyboardInterrupt:
             pass
     else:
-        train(args)
+        train(args, env_id)
 
 
 if __name__ == "__main__":
