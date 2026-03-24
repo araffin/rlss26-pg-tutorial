@@ -50,7 +50,8 @@ except ImportError as exc:
 
 DEFAULT_ENV_KWARGS: dict[str, Any] = {
     "track_name": "s_track",
-    "reward_mode": "racing",
+    # "reward_mode": "racing",
+    "reward_mode": "racingv2",
     # Drift parameters - mild defaults; increase for harder task
     # "lateral_grip": 0.85,
     # "yaw_damping": 0.3,
@@ -90,7 +91,7 @@ def train(args: argparse.Namespace) -> None:
     log_dir = args.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
-    n_envs = 10
+    n_envs = 1
     # -- training env (Monitor is added automatically by make_vec_env) ------
     vec_env = make_vec_env(
         "LineFollowerDrift-v0",

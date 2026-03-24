@@ -124,7 +124,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         max_wheel_speed: float = 150.0,
         friction: float = 0.05,
         inertia: float = 0.92,
-        action_noise_std: float = 0.1,
+        action_noise_std: float = 0.05,
         dt: float = 1 / 30,
         max_episode_steps: int = 2000,
         track_width: float = 60.0,
@@ -205,16 +205,16 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.step_count: int = 0
         self.forward_speed: float = 0.0
 
-        # Checkpoints: 8 evenly-spaced segment indices around the track.
+        # Checkpoints: 5 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
-        num_checkpoints = 8
+        num_checkpoints = 5
         self.checkpoint_segment_indices: list[int] = [
             round(idx * self.num_track_segments / num_checkpoints) % self.num_track_segments for idx in range(num_checkpoints)
         ]
         self.num_checkpoints: int = num_checkpoints
         # How close (in segment index) the robot must be to a checkpoint
         # for it to count as crossed.
-        self._checkpoint_window: int = 2
+        self._checkpoint_window: int = 4
 
         # Lap tracking
         self.lap_count: int = 0
