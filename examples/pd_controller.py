@@ -45,7 +45,7 @@ IDX_ANGULAR_VELOCITY: int = 3
 # ---------------------------------------------------------------------------
 # PD gains - feel free to experiment!
 # ---------------------------------------------------------------------------
-KP_LATERAL: float = 0.02
+KP_LATERAL: float = 0.015
 KD_LATERAL: float = 0.005
 
 KP_HEADING: float = 0.8
@@ -166,8 +166,9 @@ def main() -> None:
     make_kwargs: dict[str, Any] = {
         "render_mode": "human",
         "track_name": args.track,
-        "friction": 0.05,
-        "action_noise_std": 0.05,
+        # "friction": 0.05,
+        # "action_noise_std": 0.05,
+        # "reward_mode": "racingv2",
     }
     if args.drift or args.racing:
         make_kwargs["lateral_grip"] = args.grip
