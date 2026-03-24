@@ -90,10 +90,11 @@ def train(args: argparse.Namespace) -> None:
     log_dir = args.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
+    n_envs = 10
     # -- training env (Monitor is added automatically by make_vec_env) ------
     vec_env = make_vec_env(
         "LineFollowerDrift-v0",
-        n_envs=1,
+        n_envs=n_envs,
         env_kwargs=DEFAULT_ENV_KWARGS,
     )
     vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
@@ -110,7 +111,7 @@ def train(args: argparse.Namespace) -> None:
         eval_env,
         best_model_save_path=log_dir,
         log_path=log_dir,
-        eval_freq=max(args.eval_freq, 1),
+        eval_freq=max(args.eval_freq // n_envs, 1),
         n_eval_episodes=args.eval_episodes,
         deterministic=True,
     )
@@ -131,7 +132,7 @@ def train(args: argparse.Namespace) -> None:
             gamma=args.gamma,
             tau=args.tau,
             train_freq=1,
-            gradient_steps=1,
+            gradient_steps=n_envs,
             ent_coef="auto",
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=1,

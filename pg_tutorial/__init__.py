@@ -10,18 +10,18 @@ __all__ = ["LineFollowerDriftEnv", "LineFollowerEnv"]
 register(
     id="LineFollower-v0",
     entry_point="pg_tutorial.envs.line_follower:LineFollowerEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,
 )
 
 register(
     id="LineFollowerDrift-v0",
     entry_point="pg_tutorial.envs.drift:LineFollowerDriftEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,
 )
 
 register(
     id="LineFollowerRacing-v0",
     entry_point="pg_tutorial.envs.drift:LineFollowerDriftEnv",
-    max_episode_steps=2000,
+    max_episode_steps=1000,
     kwargs={"reward_mode": "racing"},
 )

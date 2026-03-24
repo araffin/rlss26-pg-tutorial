@@ -177,7 +177,7 @@ class LineFollowerDriftEnv(LineFollowerEnv):
 
         # ---- termination / truncation -------------------------------------
         # Off-track or going backward
-        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0
+        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0 or seg_advance < 0
         truncated = self.step_count >= self.max_episode_steps
 
         observation = self._get_observation()
