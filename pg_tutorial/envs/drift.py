@@ -95,8 +95,8 @@ class LineFollowerDriftEnv(LineFollowerEnv):
         self.yaw_damping = float(np.clip(yaw_damping, 0.0, 1.0 - 1e-6))
 
         # Reward mode
-        if reward_mode not in ("line_following", "racing"):
-            raise ValueError(f"reward_mode must be 'line_following' or 'racing', got {reward_mode!r}")
+        if reward_mode not in ("line_following", "racing", "racingv2"):
+            raise ValueError(f"reward_mode must be 'line_following', 'racing' or 'racingv2', got {reward_mode!r}")
         self.reward_mode = reward_mode
 
         # Drift state (world-frame velocity and body angular velocity)
@@ -176,7 +176,8 @@ class LineFollowerDriftEnv(LineFollowerEnv):
         )
 
         # ---- termination / truncation -------------------------------------
-        terminated = abs(lateral_error) > self.off_track_threshold
+        # Off-track or going backward
+        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0
         truncated = self.step_count >= self.max_episode_steps
 
         observation = self._get_observation()
@@ -262,9 +263,14 @@ class LineFollowerDriftEnv(LineFollowerEnv):
     ) -> float:
         if self.reward_mode == "racing":
             progress_reward = float(seg_advance) / self.num_track_segments
-            centering_penalty = -0.1 * (lateral_error / self.off_track_threshold) ** 2
+            centering_penalty = -0.1 * (math.fabs(lateral_error) / self.off_track_threshold) ** 2
             lap_bonus = 10.0 if self._next_checkpoint == 1 and self.lap_count > prev_lap_count else 0.0
             return progress_reward + centering_penalty + lap_bonus
+
+        elif self.reward_mode == "racingv2":
+            max_speed = self.max_wheel_speed
+            # going fast close to the center of lane yeilds best reward
+            return (1.0 - (math.fabs(lateral_error) / self.off_track_threshold) ** 2) * (forward_velocity / max_speed)
 
         # line_following — delegate to the base reward
         return self._compute_reward(forward_velocity, lateral_error, heading_error)
