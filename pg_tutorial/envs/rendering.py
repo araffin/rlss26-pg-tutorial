@@ -411,11 +411,13 @@ def render_hud(
     lap_count: int = 0,
     current_lap_time: float = 0.0,
     best_lap_time: float = float("inf"),
+    last_lap_time: float = float("inf"),
     next_checkpoint: int = 0,
     num_checkpoints: int = 8,
     drift: bool = False,
     slip_angle: float = 0.0,
     lateral_velocity: float = 0.0,
+    curvature: float = 0.0,
 ) -> None:
     """Draw a semi-transparent HUD overlay in the top-left corner.
 
@@ -455,11 +457,16 @@ def render_hud(
             _format_time(best_lap_time),
             COL_HUD_BEST if best_lap_time < float("inf") else COL_HUD_LABEL,
         ),
+        (
+            "LAST",
+            _format_time(last_lap_time),
+            COL_HUD_VALUE if last_lap_time < float("inf") else COL_HUD_LABEL,
+        ),
     ]
-    if drift:
-        slip_deg = math.degrees(slip_angle)
-        slip_colour = COL_HUD_DRIFT if abs(slip_deg) > 5.0 else COL_HUD_VALUE
-        top_items.append(("SLIP", f"{slip_deg:+.1f}\u00b0", slip_colour))
+    # if drift:
+    #     slip_deg = math.degrees(slip_angle)
+    #     slip_colour = COL_HUD_DRIFT if abs(slip_deg) > 5.0 else COL_HUD_VALUE
+    #     top_items.append(("SLIP", f"{slip_deg:+.1f}\u00b0", slip_colour))
     big_line_height = 24
 
     # -- bottom section (small font) ----------------------------------------
@@ -471,9 +478,10 @@ def render_hud(
             f"wheels L/R: {left_wheel_speed:+.2f} / {right_wheel_speed:+.2f}",
             COL_HUD_TEXT,
         ),
+        (f"curv: {curvature*1000:+.2f}", COL_HUD_TEXT),
     ]
-    if drift:
-        bottom_lines.append((f"lat vel: {lateral_velocity:+.1f}", COL_HUD_TEXT))
+    # if drift:
+    #     bottom_lines.append((f"lat vel: {lateral_velocity:+.1f}", COL_HUD_TEXT))
     small_line_height = 17
 
     # -- measure widths to size the background ------------------------------

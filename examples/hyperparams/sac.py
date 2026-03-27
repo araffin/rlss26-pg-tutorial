@@ -28,6 +28,8 @@ hyperparams = {
         "gradient_steps": 1,
         # Policy network architecture
         "policy_kwargs": "dict(net_arch=[256, 256])",
+        # Custom callback for logging racing metrics to TensorBoard
+        "callback": "pg_tutorial.sb3_callbacks.RacingInfoCallback",
     },
     # Default fallback for any other environment
     "default": {
@@ -42,5 +44,7 @@ hyperparams = {
         "tau": 0.005,
         "train_freq": 1,
         "gradient_steps": 1,
+        # Custom callback for logging racing metrics to TensorBoard
+        "callback": "pg_tutorial.sb3_callbacks.RacingInfoCallback",
     },
 }

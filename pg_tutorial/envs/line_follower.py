@@ -177,7 +177,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         )
 
         # Observation: [lateral_error, heading_error, forward_velocity,
-        #               angular_velocity, left_wheel_speed, right_wheel_speed]
+        #               angular_velocity, left_wheel_speed, right_wheel_speed,
+        #               curvature, lookahead_lat_2, lookahead_lat_4, lookahead_lat_6]
         obs_high = np.array(
             [
                 self.off_track_threshold,  # lateral error
@@ -186,6 +187,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
                 self.max_wheel_speed * self.wheel_radius * 2.0 / self.wheel_base,  # ang vel
                 self.max_wheel_speed,  # left wheel
                 self.max_wheel_speed,  # right wheel
+                np.pi / 10.0,  # curvature (radians per unit)
+                self.off_track_threshold,  # lookahead lat 2
+                self.off_track_threshold,  # lookahead lat 4
+                self.off_track_threshold,  # lookahead lat 6
             ],
             dtype=np.float32,
         )
@@ -381,6 +386,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         right_linear = self.right_wheel_speed * self.wheel_radius
         forward_velocity = (left_linear + right_linear) / 2.0
         angular_velocity = (right_linear - left_linear) / self.wheel_base
+        curvature = self._compute_curvature()
+        lookahead_lat = self._get_lookahead_lateral_errors()
 
         observation = np.array(
             [
@@ -390,6 +397,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
                 angular_velocity,
                 self.left_wheel_speed,
                 self.right_wheel_speed,
+                curvature,
+                lookahead_lat[0],  # lookahead 2 segments
+                lookahead_lat[1],  # lookahead 4 segments
+                lookahead_lat[2],  # lookahead 6 segments
             ],
             dtype=np.float32,
         )
@@ -460,6 +471,80 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         heading_error = math.atan2(math.sin(heading_error), math.cos(heading_error))
 
         return lateral_error, heading_error, best_closest
+
+    def _compute_curvature(self) -> float:
+        """Compute track curvature at current position.
+
+        Curvature is the rate of change of heading angle with respect to distance.
+        Higher values indicate sharper turns.
+        """
+        # Get the current segment and the next segment
+        seg_idx = self.current_segment_index
+        next_idx = (seg_idx + 1) % self.num_track_segments
+        next_next_idx = (seg_idx + 2) % self.num_track_segments
+
+        seg_start = self.track_waypoints[seg_idx]
+        seg_end = self.track_waypoints[next_idx]
+        seg_end_next = self.track_waypoints[next_next_idx]
+
+        # Compute heading angles of consecutive segments
+        track_direction1 = seg_end - seg_start
+        track_direction2 = seg_end_next - seg_end
+
+        angle1 = np.arctan2(track_direction1[1], track_direction1[0])
+        angle2 = np.arctan2(track_direction2[1], track_direction2[0])
+
+        # Heading change between segments
+        delta_angle = float(np.arctan2(np.sin(angle2 - angle1), np.cos(angle2 - angle1)))
+
+        # Distance between segment centers (approximate arc length)
+        dist = float(np.linalg.norm(seg_end - seg_start))
+        dist += float(np.linalg.norm(seg_end_next - seg_end))
+        dist /= 2.0  # average distance
+
+        if dist < 1e-6:
+            return 0.0
+
+        # Curvature = d(theta)/ds (radians per unit distance)
+        curvature = delta_angle / dist
+        return np.clip(curvature, -np.pi / 10.0, np.pi / 10.0)
+
+    def _get_lookahead_lateral_errors(self) -> tuple[float, float, float]:
+        """Compute lateral errors at lookahead points (2, 4, 6 segments ahead).
+
+        These values help the agent anticipate upcoming turns and plan
+        optimal racing lines.
+        """
+        robot_pos = np.array([self.robot_x, self.robot_y], dtype=np.float64)
+        offsets = [2, 4, 6]
+        lookahead_errors = []
+
+        for offset in offsets:
+            if self.num_track_segments <= offset:
+                lookahead_errors.append(0.0)
+                continue
+
+            # Get the lookahead segment
+            lookahead_seg_idx = (self.current_segment_index + offset) % self.num_track_segments
+            lookahead_next_idx = (lookahead_seg_idx + 1) % self.num_track_segments
+
+            seg_start = self.track_waypoints[lookahead_seg_idx]
+            seg_end = self.track_waypoints[lookahead_next_idx]
+
+            # Find closest point on this lookahead segment to robot
+            closest, _ = _closest_point_on_segment(robot_pos, seg_start, seg_end)
+
+            # Compute lateral error relative to lookahead segment
+            track_direction = seg_end - seg_start
+            track_angle = float(np.arctan2(track_direction[1], track_direction[0]))
+
+            diff = robot_pos - closest
+            lat_error = float(
+                -diff[0] * np.sin(track_angle) + diff[1] * np.cos(track_angle),
+            )
+            lookahead_errors.append(np.clip(lat_error, -self.off_track_threshold, self.off_track_threshold))
+
+        return (lookahead_errors[0], lookahead_errors[1], lookahead_errors[2])
 
     # ---- rendering --------------------------------------------------------
 
@@ -545,6 +630,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
     def _render_hud(self, surface: Any, pygame_module: Any, lateral_error: float, heading_error: float) -> None:
         """Draw the HUD.  Subclasses can override to add extra fields."""
+        curvature = self._compute_curvature()
         render_hud(
             surface,
             pygame_module,
@@ -557,8 +643,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             lap_count=self.lap_count,
             current_lap_time=self.current_lap_time,
             best_lap_time=self.best_lap_time,
+            last_lap_time=self.last_lap_time,
             next_checkpoint=self._next_checkpoint,
             num_checkpoints=self.num_checkpoints,
+            curvature=curvature,
         )
 
     def close(self) -> None:
