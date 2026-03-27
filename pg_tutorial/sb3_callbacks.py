@@ -1,5 +1,6 @@
 from stable_baselines3.common.callbacks import BaseCallback
 
+
 class RacingInfoCallback(BaseCallback):
     """Log extra racing metrics (lap count, progress, slip) to TensorBoard."""
 

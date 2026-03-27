@@ -40,6 +40,7 @@ try:
     from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
     from stable_baselines3.common.env_util import make_vec_env
     from stable_baselines3.common.vec_env import VecNormalize
+
     from pg_tutorial.sb3_callbacks import RacingInfoCallback
 except ImportError as exc:
     raise ImportError("stable-baselines3 is required for this example. " 'Install it with:  pip install -e ".[rl]"') from exc

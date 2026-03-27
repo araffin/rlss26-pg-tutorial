@@ -398,9 +398,9 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
                 self.left_wheel_speed,
                 self.right_wheel_speed,
                 curvature,
-                lookahead_lat[0],  # lookahead 2 segments
-                lookahead_lat[1],  # lookahead 4 segments
-                lookahead_lat[2],  # lookahead 6 segments
+                lookahead_lat[0],
+                lookahead_lat[1],
+                lookahead_lat[2],
             ],
             dtype=np.float32,
         )
@@ -510,13 +510,13 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         return np.clip(curvature, -np.pi / 10.0, np.pi / 10.0)
 
     def _get_lookahead_lateral_errors(self) -> tuple[float, float, float]:
-        """Compute lateral errors at lookahead points (2, 4, 6 segments ahead).
+        """Compute lateral errors at lookahead points.
 
         These values help the agent anticipate upcoming turns and plan
         optimal racing lines.
         """
         robot_pos = np.array([self.robot_x, self.robot_y], dtype=np.float64)
-        offsets = [2, 4, 6]
+        offsets = [2, 8, 16]
         lookahead_errors = []
 
         for offset in offsets:
