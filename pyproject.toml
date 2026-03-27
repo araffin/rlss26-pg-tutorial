@@ -111,7 +111,7 @@ markers = [
 disable_warnings = ["couldnt-parse"]
 branch = false
 omit = ["tests/*", "pg_tutorial/_version.py", "examples/*",
-    "pg_tutorial/notebook_utils.py", "pg_tutorial/sb3_callbacks.py"]
+    "pg_tutorial/notebook_utils.py", "pg_tutorial/sb3_callbacks.py", "pg_tutorial/envs/track_editor.py"]
 
 [tool.coverage.report]
 exclude_lines = [

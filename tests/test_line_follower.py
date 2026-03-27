@@ -68,7 +68,7 @@ class TestGymEnvChecker:
     """Use Gymnasium's built-in ``check_env`` to validate the base environment."""
 
     def test_check_env_default(self) -> None:
-        env = LineFollowerEnv(action_noise_std=0.0)
+        env = LineFollowerEnv(action_noise_std=0.0, track_name="custom")
         check_env(env, skip_render_check=True)
         env.close()
 

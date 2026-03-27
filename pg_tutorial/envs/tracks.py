@@ -166,6 +166,26 @@ def _make_rounded_l_track(num_points: int = 300) -> NDArray[np.float64]:
     return track[:num_points]
 
 
+def _make_custom_track(num_points: int = 300) -> NDArray[np.float64]:
+    """Custom track with user-defined control points."""
+    control_points = np.array(
+        [
+            [1.8723, -0.8700],
+            [1.4142, 0.7071],
+            [0.0044, -0.4052],
+            [-1.4142, 0.7071],
+            [-2.0000, 0.0000],
+            [-1.4312, -1.0429],
+            [0.1000, -1.4805],
+            [1.2403, -1.3889],
+        ],
+        dtype=np.float64,
+    )
+    pts_per_seg = max(num_points // len(control_points), 4)
+    track = _smooth_closed_curve(control_points, pts_per_seg)
+    return track[:num_points]
+
+
 def _make_hairpin_track(num_points: int = 300) -> NDArray[np.float64]:
     """Elongated track with tight hairpin turns at each end."""
     half = num_points // 2
@@ -203,6 +223,7 @@ TRACK_BUILDERS: dict[str, Any] = {
     "s_track": _make_s_track,
     "rounded_l": _make_rounded_l_track,
     "hairpin": _make_hairpin_track,
+    "custom": _make_custom_track,
 }
 
 
