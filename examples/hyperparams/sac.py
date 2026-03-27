@@ -4,20 +4,22 @@
 # These are good default values to start with
 hyperparams = {
     "LineFollowerDrift-v0": {
+        # Norm observation
+        "normalize": {"norm_obs": True, "norm_reward": False},
         # Training timesteps
         "n_timesteps": 1_000_000,
         # Policy architecture
         "policy": "MlpPolicy",
         # Learning rate
-        "learning_rate": 3e-4,
+        "learning_rate": 7e-4,
         # Replay buffer size
         "buffer_size": 1_000_000,
         # Batch size for sampling from replay buffer
         "batch_size": 256,
         # Entropy regularization coefficient
-        "ent_coef": "auto",
+        "ent_coef": "auto_0.1",
         # Number of steps to run before training
-        "learning_starts": 10_000,
+        "learning_starts": 1_000,
         # Discount factor
         "gamma": 0.99,
         # Soft target update coefficient
@@ -27,7 +29,7 @@ hyperparams = {
         # Number of gradient steps per train_freq
         "gradient_steps": 1,
         # Policy network architecture
-        "policy_kwargs": "dict(net_arch=[256, 256])",
+        "policy_kwargs": "dict(net_arch=[128, 128])",
         # Custom callback for logging racing metrics to TensorBoard
         "callback": "pg_tutorial.sb3_callbacks.RacingInfoCallback",
     },
