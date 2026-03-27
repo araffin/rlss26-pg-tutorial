@@ -359,30 +359,30 @@ def render_robot(
     _aa_thick_line(surface, pygame_module, heading_start, heading_end, 2, COL_HEADING)
 
     # -- drift velocity vector (only when slip angle is noticeable) ---------
-    speed = math.hypot(vel_x, vel_y)
-    if speed > 5.0 and abs(slip_angle) > math.radians(3.0):
-        # Scale the vector so it's visible but doesn't dominate the view.
-        # Length proportional to speed, capped for readability.
-        vec_scale = min(speed * 0.08, body_radius * 2.5) / max(speed, 1e-9)
-        vel_end_x = robot_x + vel_x * vec_scale * 30.0
-        vel_end_y = robot_y + vel_y * vec_scale * 30.0
+    # speed = math.hypot(vel_x, vel_y)
+    # if speed > 5.0 and abs(slip_angle) > math.radians(3.0):
+    #     # Scale the vector so it's visible but doesn't dominate the view.
+    #     # Length proportional to speed, capped for readability.
+    #     vec_scale = min(speed * 0.08, body_radius * 2.5) / max(speed, 1e-9)
+    #     vel_end_x = robot_x + vel_x * vec_scale * 30.0
+    #     vel_end_y = robot_y + vel_y * vec_scale * 30.0
 
-        vel_surf = pygame_module.Surface((screen_width, screen_height), pygame_module.SRCALPHA)
-        vel_start = np.array([robot_x, robot_y], dtype=np.float64)
-        vel_end = np.array([vel_end_x, vel_end_y], dtype=np.float64)
-        _aa_thick_line(vel_surf, pygame_module, vel_start, vel_end, 1.5, COL_DRIFT_VEL)
+    #     vel_surf = pygame_module.Surface((screen_width, screen_height), pygame_module.SRCALPHA)
+    #     vel_start = np.array([robot_x, robot_y], dtype=np.float64)
+    #     vel_end = np.array([vel_end_x, vel_end_y], dtype=np.float64)
+    #     _aa_thick_line(vel_surf, pygame_module, vel_start, vel_end, 1.5, COL_DRIFT_VEL)
 
-        # Small arrowhead
-        arrow_len = 6.0
-        vel_angle = math.atan2(vel_y, vel_x)
-        for sign in (-1.0, 1.0):
-            wing_angle = vel_angle + math.pi + sign * 0.45
-            wing_end = np.array(
-                [vel_end_x + arrow_len * math.cos(wing_angle), vel_end_y + arrow_len * math.sin(wing_angle)],
-                dtype=np.float64,
-            )
-            _aa_thick_line(vel_surf, pygame_module, vel_end, wing_end, 1.0, COL_DRIFT_VEL)
-        surface.blit(vel_surf, (0, 0))
+    #     # Small arrowhead
+    #     arrow_len = 6.0
+    #     vel_angle = math.atan2(vel_y, vel_x)
+    #     for sign in (-1.0, 1.0):
+    #         wing_angle = vel_angle + math.pi + sign * 0.45
+    #         wing_end = np.array(
+    #             [vel_end_x + arrow_len * math.cos(wing_angle), vel_end_y + arrow_len * math.sin(wing_angle)],
+    #             dtype=np.float64,
+    #         )
+    #         _aa_thick_line(vel_surf, pygame_module, vel_end, wing_end, 1.0, COL_DRIFT_VEL)
+    #     surface.blit(vel_surf, (0, 0))
 
 
 # ---------------------------------------------------------------------------

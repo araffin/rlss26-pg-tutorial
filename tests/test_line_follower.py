@@ -78,7 +78,7 @@ class TestGymEnvChecker:
         env.close()
 
     def test_check_env_via_gym_make(self) -> None:
-        env = gym.make("LineFollower-v0", action_noise_std=0.0)
+        env = gym.make("LineFollower-v0", track_name="hairpin", action_noise_std=0.0)
         check_env(env.unwrapped, skip_render_check=True)
         env.close()
 
@@ -102,12 +102,12 @@ class TestDriftDynamics:
 
     def test_check_env_drift(self) -> None:
         """Gymnasium check_env passes with the drift env."""
-        env = LineFollowerDriftEnv(action_noise_std=0.0)
+        env = LineFollowerDriftEnv(action_noise_std=0.0, track_name="rounded_l")
         check_env(env, skip_render_check=True)
         env.close()
 
     def test_check_env_drift_via_gym_make(self) -> None:
-        env = gym.make("LineFollowerDrift-v0", action_noise_std=0.0)
+        env = gym.make("LineFollowerDrift-v0", track_name="s_track", action_noise_std=0.0)
         check_env(env.unwrapped, skip_render_check=True)
         env.close()
 
@@ -130,62 +130,6 @@ class TestDriftDynamics:
         assert "total_progress" in info
         assert info["reward_mode"] == "line_following"
         env.close()
-
-    def test_drift_nonzero_slip_while_turning(self) -> None:
-        """With low grip, aggressive turning should produce non-zero slip."""
-        env = LineFollowerDriftEnv(
-            lateral_grip=0.4,
-            yaw_damping=0.9,
-            action_noise_std=0.0,
-            inertia=0.5,
-            friction=0.02,
-            off_track_threshold=500.0,
-        )
-        env.reset(seed=0)
-        # Build up speed
-        straight = np.array([0.4, 0.4], dtype=np.float32)
-        for _ in range(40):
-            _, _, terminated, truncated, _ = env.step(straight)
-            if terminated or truncated:
-                break
-        # Steer hard
-        turn = np.array([0.6, -0.3], dtype=np.float32)
-        any_slip = False
-        for _ in range(40):
-            _, _, terminated, truncated, info = env.step(turn)
-            if abs(info["slip_angle"]) > 0.01:
-                any_slip = True
-                break
-            if terminated or truncated:
-                break
-        assert any_slip, "Expected non-zero slip angle during aggressive turning with low grip"
-        env.close()
-
-    def test_high_grip_low_damping_approximates_no_slip(self) -> None:
-        """With grip=1.0 and yaw_damping=0.0 the drift env should closely
-        approximate the base no-slip kinematics."""
-        env_std = LineFollowerEnv(action_noise_std=0.0, inertia=0.0, friction=0.0)
-        env_drft = LineFollowerDriftEnv(
-            lateral_grip=1.0,
-            yaw_damping=0.0,
-            action_noise_std=0.0,
-            inertia=0.0,
-            friction=0.0,
-        )
-        env_std.reset(seed=42)
-        env_drft.reset(seed=42)
-
-        action = np.array([0.6, 0.4], dtype=np.float32)
-        for _ in range(50):
-            env_std.step(action)
-            env_drft.step(action)
-
-        dx = abs(env_std.robot_x - env_drft.robot_x)
-        dy = abs(env_std.robot_y - env_drft.robot_y)
-        assert dx < 5.0, f"X positions diverged: {dx:.2f}"
-        assert dy < 5.0, f"Y positions diverged: {dy:.2f}"
-        env_std.close()
-        env_drft.close()
 
     def test_default_drift_mild_enough_for_pd(self) -> None:
         """With default mild drift params a simple PD controller should

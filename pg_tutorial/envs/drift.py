@@ -46,7 +46,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pg_tutorial.envs.line_follower import LineFollowerEnv
-from pg_tutorial.envs.rendering import render_hud, render_robot
 
 
 class LineFollowerDriftEnv(LineFollowerEnv):

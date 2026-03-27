@@ -37,7 +37,7 @@ import pg_tutorial  # noqa: F401
 
 try:
     from stable_baselines3 import SAC
-    from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+    from stable_baselines3.common.callbacks import EvalCallback
     from stable_baselines3.common.env_util import make_vec_env
     from stable_baselines3.common.vec_env import VecNormalize
 
@@ -191,7 +191,7 @@ def evaluate(args: argparse.Namespace, env_id: str) -> None:
 
         while not done:
             action, _states = model.predict(obs, deterministic=True)
-            obs, reward, dones, infos = vec_env.step(action)
+            obs, reward, dones, infos = vec_env.step(action)  # type: ignore[assignment]
             vec_env.render()
             total_reward += float(reward[0])
             step_count += 1
