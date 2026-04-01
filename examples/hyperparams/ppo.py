@@ -6,6 +6,8 @@ hyperparams = {
     "LineFollowerDrift-v0": {
         # Normalize obs and reward
         "normalize": True,
+        # Number of environments
+        "n_envs": 1,
         # Training timesteps (more for drift environment)
         "n_timesteps": 500_000,
         # Policy architecture
@@ -36,6 +38,7 @@ hyperparams = {
         "callback": "pg_tutorial.sb3_callbacks.RacingInfoCallback",
         # Policy network architecture
         # "policy_kwargs": "dict(net_arch=[256, 256])",
+        "env_kwargs": {"reward_mode": "racingv2", "track_name": "s_track"},
     },
     # Default fallback for any other environment
     "default": {
