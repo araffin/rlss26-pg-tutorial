@@ -59,4 +59,15 @@ hyperparams = {
         # Custom callback for logging racing metrics to TensorBoard
         "callback": "pg_tutorial.sb3_callbacks.RacingInfoCallback",
     },
+    "MiniPong-v0": {
+        "normalize": True,
+        "n_timesteps": 500_000,
+        "policy": "MlpPolicy",
+        "n_envs": 8,
+        "learning_rate": 3e-4,
+        "n_steps": 512,
+        "batch_size": 64,
+        "n_epochs": 4,
+        "ent_coef": 0.01,
+    },
 }
