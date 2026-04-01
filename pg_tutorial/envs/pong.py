@@ -7,6 +7,7 @@ the positions and velocities of both paddles and the ball.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, SupportsFloat
 
 import gymnasium as gym
@@ -44,9 +45,10 @@ class PongEnv(gym.Env):
         - 2: Stay stationary
 
     Reward:
-        - +1 for scoring (ball passes right paddle)
-        - -1 for losing (ball passes left paddle)
-        - Small negative reward (-0.01) per step to encourage scoring
+        - +1 for scoring a point (ball passes right paddle)
+        - -1 for losing a point (ball passes left paddle)
+        - Each point ends the current episode
+        - Match score persists across resets until a player wins the match
 
     Parameters
     ----------
@@ -68,6 +70,10 @@ class PongEnv(gym.Env):
         Maximum number of steps per episode. Default: 500
     render_mode : str | None
         Render mode: None (no rendering), 'human' (display window), 'rgb_array' (return RGB array)
+    winning_score : int
+        Number of points needed to win a match. Default: 10
+    result_callback : Callable[[dict[str, Any]], None] | None
+        Optional callback invoked when a match ends. Useful for custom SB3 logging.
     """
 
     metadata = {  # noqa: RUF012
@@ -82,10 +88,12 @@ class PongEnv(gym.Env):
         paddle_height: float = 0.15,
         paddle_width: float = 0.02,
         ball_size: float = 0.02,
-        paddle_speed: float = 0.5,
-        ball_speed: float = 0.4,
-        max_episode_steps: int = 500,
+        paddle_speed: float = 0.8,
+        ball_speed: float = 1.0,
+        max_episode_steps: int = 2000,
         render_mode: str | None = None,
+        winning_score: int = 10,
+        result_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -106,6 +114,8 @@ class PongEnv(gym.Env):
 
         # Maximum episode steps
         self.max_episode_steps = max_episode_steps
+        self.winning_score = winning_score
+        self.result_callback = result_callback
 
         # Render mode
         if render_mode not in (None, "human", "rgb_array"):
@@ -154,24 +164,15 @@ class PongEnv(gym.Env):
         # Reset step counter
         self.step_count = 0
 
-        # Reset scores
-        self.score_left = 0
-        self.score_right = 0
+        if self.score_left >= self.winning_score or self.score_right >= self.winning_score:
+            self.score_left = 0
+            self.score_right = 0
 
-        # Initialize ball at center
-        self.ball_x = 0.5
-        self.ball_y = 0.5
-
-        # Initialize ball velocity with random direction
-        direction = self.np_random.choice([-1, 1])
-        self.ball_vx = direction * self.ball_speed
-        self.ball_vy = (self.np_random.random() * 2 - 1) * self.ball_speed * 0.5
-
-        # Initialize paddles at center
-        self.left_paddle_y = 0.5
-        self.right_paddle_y = 0.5
-        self.left_paddle_v = 0.0
-        self.right_paddle_v = 0.0
+        if self.score_left == 0 and self.score_right == 0:
+            self._reset_match()
+        else:
+            serving_left = self.ball_vx >= 0
+            self._reset_serve(serving_left=serving_left)
 
         observation = self._get_observation()
         info = self._get_info()
@@ -206,6 +207,9 @@ class PongEnv(gym.Env):
         # Apply action to left paddle
         self.left_paddle_v = self._action_to_velocity(action)
 
+        # Update opponent AI before moving paddles so it also works without rendering
+        self._update_opponent()
+
         # Update paddle positions
         self.left_paddle_y += self.left_paddle_v * self.dt
         self.right_paddle_y += self.right_paddle_v * self.dt
@@ -234,22 +238,22 @@ class PongEnv(gym.Env):
         terminated = False
 
         if self.ball_x <= 0:
-            # Right side scores (agent loses)
+            # Right side scores (agent loses point)
             self.score_right += 1
             reward = -1.0
             terminated = True
+            if self.score_right >= self.winning_score:
+                self._notify_match_result()
         elif self.ball_x >= 1:
-            # Left side scores (agent wins)
+            # Left side scores (agent wins point)
             self.score_left += 1
             reward = 1.0
             terminated = True
+            if self.score_left >= self.winning_score:
+                self._notify_match_result()
 
         # Truncation by step count
         truncated = self.step_count >= self.max_episode_steps
-
-        # Step reward (encourage keeping ball in play)
-        if not terminated and not truncated:
-            reward -= 0.01
 
         observation = self._get_observation()
         info = self._get_info()
@@ -301,18 +305,78 @@ class PongEnv(gym.Env):
             self.ball_vy = np.clip(self.ball_vy, -self.ball_speed, self.ball_speed)
 
     def _update_opponent(self) -> None:
-        """Update the opponent paddle (simple AI)."""
-        # Simple AI: follow the ball with some delay
-        target_y = self.ball_y
+        """Update the opponent paddle with simple ball prediction."""
+        max_speed = self.paddle_speed * 0.95
+        dead_zone = 0.015
+
+        if self.ball_vx > 0:
+            time_to_paddle = (1 - self.paddle_width - self.ball_x) / max(self.ball_vx, 1e-6)
+            predicted_y = self.ball_y + self.ball_vy * max(time_to_paddle, 0.0)
+            predicted_y = self._reflect_vertical_position(predicted_y)
+            target_y = predicted_y
+        else:
+            target_y = 0.5 + 0.35 * (self.ball_y - 0.5)
+
         diff = target_y - self.right_paddle_y
-
-        # Limit opponent speed to be similar to player
-        max_speed = self.paddle_speed * 0.85  # Slightly slower than player
-
-        if abs(diff) > 0.02:  # Dead zone
-            self.right_paddle_v = np.clip(diff * 5, -max_speed, max_speed)
+        if abs(diff) > dead_zone:
+            self.right_paddle_v = float(np.clip(diff * 6.0, -max_speed, max_speed))
         else:
             self.right_paddle_v = 0.0
+
+    def _reflect_vertical_position(self, y: float) -> float:
+        """Reflect a y position into the playfield accounting for wall bounces."""
+        min_y = self.ball_size
+        max_y = 1 - self.ball_size
+        span = max_y - min_y
+
+        if span <= 0:
+            return 0.5
+
+        shifted = y - min_y
+        period = 2 * span
+        wrapped = shifted % period
+        if wrapped > span:
+            wrapped = period - wrapped
+        return float(min_y + wrapped)
+
+    def _reset_match(self) -> None:
+        """Reset scores and positions for a new match."""
+        self.score_left = 0
+        self.score_right = 0
+        self.left_paddle_y = 0.5
+        self.right_paddle_y = 0.5
+        self.left_paddle_v = 0.0
+        self.right_paddle_v = 0.0
+        serving_left = bool(self.np_random.integers(0, 2))
+        self._reset_serve(serving_left=serving_left)
+
+    def _reset_serve(self, serving_left: bool) -> None:
+        """Reset paddles and ball for the next point."""
+        self.ball_x = 0.5
+        self.ball_y = float(np.clip(self.np_random.uniform(0.25, 0.75), self.ball_size, 1 - self.ball_size))
+        self.left_paddle_y = 0.5
+        self.right_paddle_y = 0.5
+        self.left_paddle_v = 0.0
+        self.right_paddle_v = 0.0
+
+        direction = 1 if serving_left else -1
+        launch_angle = float(self.np_random.uniform(-0.6, 0.6))
+        self.ball_vx = direction * self.ball_speed
+        self.ball_vy = launch_angle * self.ball_speed
+
+    def _notify_match_result(self) -> None:
+        """Notify listeners when a match ends."""
+        if self.result_callback is None:
+            return
+
+        self.result_callback(
+            {
+                "winner": "left" if self.score_left > self.score_right else "right",
+                "score_left": self.score_left,
+                "score_right": self.score_right,
+                "steps": self.step_count,
+            }
+        )
 
     def _get_observation(self) -> NDArray[np.float32]:
         """Get current observation."""
@@ -332,10 +396,26 @@ class PongEnv(gym.Env):
 
     def _get_info(self) -> dict[str, Any]:
         """Get additional information."""
+        left_won = self.score_left >= self.winning_score
+        right_won = self.score_right >= self.winning_score
+        match_over = left_won or right_won
+
         return {
             "score_left": self.score_left,
             "score_right": self.score_right,
             "steps": self.step_count,
+            "winning_score": self.winning_score,
+            "point_difference": self.score_left - self.score_right,
+            "match_over": match_over,
+            "winner": "left" if left_won else "right" if right_won else None,
+            "sb3_logs": {
+                "pong/score_left": float(self.score_left),
+                "pong/score_right": float(self.score_right),
+                "pong/point_difference": float(self.score_left - self.score_right),
+                "pong/match_over": float(match_over),
+                "pong/agent_win": float(left_won),
+                "pong/opponent_win": float(right_won),
+            },
         }
 
     @property
@@ -359,9 +439,6 @@ class PongEnv(gym.Env):
 
         if self.screen is None:
             self._init_pygame()
-
-        # Update opponent AI
-        self._update_opponent()
 
         # Clear screen
         self.screen.fill((0, 0, 0))

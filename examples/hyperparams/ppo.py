@@ -65,9 +65,10 @@ hyperparams = {
         "policy": "MlpPolicy",
         "n_envs": 8,
         "learning_rate": 3e-4,
-        "n_steps": 512,
-        "batch_size": 64,
+        "n_steps": 128,
         "n_epochs": 4,
+        "batch_size": 256,
         "ent_coef": 0.01,
+        "callback": "pg_tutorial.sb3_callbacks.PongInfoCallback",
     },
 }

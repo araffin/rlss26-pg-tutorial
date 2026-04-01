@@ -30,5 +30,5 @@ register(
 register(
     id="MiniPong-v0",
     entry_point="pg_tutorial.envs.pong:PongEnv",
-    max_episode_steps=500,
+    # max_episode_steps=500,
 )
