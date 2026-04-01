@@ -60,8 +60,8 @@ tests = [
     "black",
 ]
 rl = [
-    "stable-baselines3>=2.3.0",
-    "rl_zoo3>=2.3.0",
+    "stable-baselines3>=2.8.0",
+    "rl_zoo3>=2.8.0",
 ]
 
 [project.urls]
