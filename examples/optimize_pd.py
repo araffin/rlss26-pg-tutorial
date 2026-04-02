@@ -9,7 +9,7 @@ Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
 """
 
 import argparse
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
@@ -23,11 +23,9 @@ def compute_pd_action(
     observation: np.ndarray,
     prev_lateral_error: float,
     dt: float,
-    speed: float | None = 0.5,  # normalised wheel speed in [-1, 1]
+    speed: float = 0.5,  # normalised wheel speed in [-1, 1]
     kp: float = 0.005,  # proportional gain
     kd: float = 0.005,  # derivative gain
-    min_speed: float | None = None,
-    max_speed: float | None = None,
 ) -> tuple[np.ndarray, float]:
     """Compute a ``[left_wheel, right_wheel]`` action using PD control."""
     # Retrieve lateral error (cross track error) from observation
@@ -38,14 +36,6 @@ def compute_pd_action(
 
     # PD correction - positive correction steers to the right
     steering = kp * lateral_error + kd * lateral_error_derivative
-
-    # High speed when close to the center line
-    if min_speed and max_speed:
-        max_error = 30.0
-        # Linear interpolation
-        speed = min_speed + (1 - abs(lateral_error / max_error)) * (max_speed - min_speed)
-
-    assert speed is not None, "You must pass 'speed' or 'min_speed' and 'max_speed'"
 
     # Differential drive: subtract/add steering from the base speed
     left_wheel = speed + steering
@@ -60,11 +50,9 @@ def evaluate(
     env: LineFollowerEnv,
     kp: float,
     kd: float,
+    speed: float,
     compute_action: Callable | None = None,
-    speed: float | None = None,
     verbose: int = 1,
-    min_speed: float | None = None,
-    max_speed: float | None = None,
 ) -> tuple[float, float]:
     env.reset_lap_times()
     observation, _ = env.reset()
@@ -82,15 +70,13 @@ def evaluate(
     compute_action = compute_action or compute_pd_action
 
     while not done:
-        action, prev_lateral_error = compute_action(
+        action, prev_lateral_error = compute_pd_action(
             observation,
             prev_lateral_error,
             env.dt,
             kp=kp,
             kd=kd,
             speed=speed,
-            min_speed=min_speed,
-            max_speed=max_speed,
         )
 
         observation, reward, terminated, truncated, info = env.step(action)
@@ -119,8 +105,6 @@ def optimize(
     pop_std: float = 0.001,
     pop_size: int = 10,
     n_iterations: int = 10,
-    min_speed: float | None = None,
-    max_speed: float | None = None,
 ) -> tuple[float, float]:
     # Start with small gains
     initial_kp = initial_kd = 0.0001
