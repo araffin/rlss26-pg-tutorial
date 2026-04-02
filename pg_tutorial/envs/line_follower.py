@@ -126,7 +126,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         inertia: float = 0.95,
         action_noise_std: float = 0.05,
         dt: float = 1 / 30,
-        max_episode_steps: int = 1000,
+        max_episode_steps: int = 100000,  # overwritten by gym registration
         track_width: float = 60.0,
         off_track_threshold: float = 80.0,
         render_mode: str | None = None,
@@ -183,6 +183,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             [
                 self.off_track_threshold,  # lateral error
                 np.pi,  # heading error
+                np.inf,  # lateral error derivative
+                np.inf,  # heading error derivative
                 self.max_wheel_speed * self.wheel_radius * 2.0,  # fwd vel
                 self.max_wheel_speed * self.wheel_radius * 2.0 / self.wheel_base,  # ang vel
                 self.max_wheel_speed,  # left wheel
@@ -209,6 +211,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index: int = 0
         self.step_count: int = 0
         self.forward_speed: float = 0.0
+        self.prev_lateral_error = self.prev_heading_error = 0.0
 
         # Checkpoints: 5 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
@@ -255,6 +258,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index = 0
         self.step_count = 0
         self.forward_speed = 0.0
+        self.prev_lateral_error = self.prev_heading_error = 0.0
 
         # Lap tracking
         self.lap_count = 0
@@ -382,6 +386,13 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
     def _get_observation(self) -> NDArray[np.float32]:
         lateral_error, heading_error, _ = self._compute_track_errors()
+        # Derivative (finite difference)
+        lateral_error_derivative = (lateral_error - self.prev_lateral_error) / self.dt
+        heading_error_derivative = (heading_error - self.prev_heading_error) / self.dt
+        # Update prev errors
+        self.prev_lateral_error = lateral_error
+        self.prev_heading_error = heading_error
+
         left_linear = self.left_wheel_speed * self.wheel_radius
         right_linear = self.right_wheel_speed * self.wheel_radius
         forward_velocity = (left_linear + right_linear) / 2.0
@@ -393,6 +404,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             [
                 lateral_error,
                 heading_error,
+                lateral_error_derivative,
+                heading_error_derivative,
                 forward_velocity,
                 angular_velocity,
                 self.left_wheel_speed,

@@ -39,8 +39,6 @@ from pg_tutorial.envs.tracks import TRACK_BUILDERS
 # ---------------------------------------------------------------------------
 IDX_LATERAL_ERROR: int = 0
 IDX_HEADING_ERROR: int = 1
-IDX_FORWARD_VELOCITY: int = 2
-IDX_ANGULAR_VELOCITY: int = 3
 
 # ---------------------------------------------------------------------------
 # PD gains - feel free to experiment!

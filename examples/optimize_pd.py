@@ -17,6 +17,7 @@ from pg_tutorial.envs import TRACK_BUILDERS
 from pg_tutorial.envs.line_follower import LineFollowerEnv
 
 IDX_LATERAL_ERROR: int = 0
+IDX_LATERAL_ERROR_DERIVATIVE: int = 2
 
 
 @dataclass
