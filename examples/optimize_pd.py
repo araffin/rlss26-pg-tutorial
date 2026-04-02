@@ -9,6 +9,7 @@ Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
 """
 
 import argparse
+from typing import Callable
 
 import numpy as np
 
@@ -59,6 +60,7 @@ def evaluate(
     env: LineFollowerEnv,
     kp: float,
     kd: float,
+    compute_action: Callable | None = None,
     speed: float | None = None,
     verbose: int = 1,
     min_speed: float | None = None,
@@ -76,6 +78,8 @@ def evaluate(
     done = False
     best_lap_time = float("inf")
     lap_count = 0
+    # Function to compute the action
+    compute_action = compute_action or compute_pd_action
 
     while not done:
         action, prev_lateral_error = compute_action(
@@ -85,6 +89,8 @@ def evaluate(
             kp=kp,
             kd=kd,
             speed=speed,
+            min_speed=min_speed,
+            max_speed=max_speed,
         )
 
         observation, reward, terminated, truncated, info = env.step(action)
@@ -171,7 +177,7 @@ def main() -> None:
         kp, kd = optimize(env, n_iterations=10, speed=0.5)
         print(f"Optimized gains: {kp=:.5f}, {kd=:.5f}")
     else:
-        evaluate(env, kp=0.005, kd=0.005, speed=0.5)
+        evaluate(env, kp=0.001, kd=0.0005, speed=0.5)
         # evaluate(env, kp=0.00408, kd=0.00734, speed=0.5)
 
     env.close()
