@@ -118,7 +118,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
     def __init__(
         self,
         track_waypoints: NDArray[np.float64] | None = None,
-        track_name: str = "oval",
+        track_name: str = "s_track",
         wheel_base: float = 20.0,
         wheel_radius: float = 5.0,
         max_wheel_speed: float = 150.0,

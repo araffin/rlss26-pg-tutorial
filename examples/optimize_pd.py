@@ -5,11 +5,11 @@ Run with::
 
     python examples/pd_controller.py --track s_track
 
-Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
+Available tracks: ``oval`, ``s_track``, ``rounded_l``, ``hairpin``, ``custom``.
 """
 
 import argparse
-from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -19,46 +19,72 @@ from pg_tutorial.envs.line_follower import LineFollowerEnv
 IDX_LATERAL_ERROR: int = 0
 
 
-def compute_pd_action(
-    observation: np.ndarray,
-    prev_lateral_error: float,
-    dt: float,
-    speed: float = 0.5,  # normalised wheel speed in [-1, 1]
-    kp: float = 0.005,  # proportional gain
-    kd: float = 0.005,  # derivative gain
-) -> tuple[np.ndarray, float]:
-    """Compute a ``[left_wheel, right_wheel]`` action using PD control."""
-    # Retrieve lateral error (cross track error) from observation
-    lateral_error = float(observation[IDX_LATERAL_ERROR])
+@dataclass
+class BangBangController:
+    steering_step: float = 0.3
+    speed: float = 0.5
+    error_threshold: float = 0.5
 
-    # Derivative (finite difference)
-    lateral_error_derivative = (lateral_error - prev_lateral_error) / dt
+    def compute_action(
+        self,
+        lateral_error: float,
+        prev_lateral_error: float,
+    ) -> np.ndarray:
+        """Compute a ``[left_wheel, right_wheel]`` action using bang-bang control."""
 
-    # PD correction - positive correction steers to the right
-    steering = kp * lateral_error + kd * lateral_error_derivative
+        steering = 0.0
+        if abs(lateral_error) > self.error_threshold:
+            steering = np.sign(lateral_error) * self.steering_step
 
-    # Differential drive: subtract/add steering from the base speed
-    left_wheel = speed + steering
-    right_wheel = speed - steering
+        # Differential drive: subtract/add steering from the base speed
+        left_wheel = self.speed + steering
+        right_wheel = self.speed - steering
 
-    action = np.clip([left_wheel, right_wheel], -1.0, 1.0)
+        action = np.clip([left_wheel, right_wheel], -1.0, 1.0)
 
-    return action, lateral_error
+        return action
+
+
+@dataclass
+class PDController:
+    kp: float = 0.0  # proportional gain
+    kd: float = 0.0  # derivative gain
+    dt: float = 0.0
+    speed: float = 0.0  # normalised wheel speed in [-1, 1]
+
+    def compute_action(
+        self,
+        lateral_error: float,
+        prev_lateral_error: float,
+    ) -> np.ndarray:
+        """Compute a ``[left_wheel, right_wheel]`` action using PD control."""
+        assert self.dt > 0, f"{self.dt} <=0! Did you forget to set it?"
+        # Derivative (finite difference)
+        lateral_error_derivative = (lateral_error - prev_lateral_error) / self.dt
+
+        # PD correction - positive correction steers to the right
+        steering = self.kp * lateral_error + self.kd * lateral_error_derivative
+
+        # Differential drive: subtract/add steering from the base speed
+        left_wheel = self.speed + steering
+        right_wheel = self.speed - steering
+
+        action = np.clip([left_wheel, right_wheel], -1.0, 1.0)
+
+        return action
 
 
 def evaluate(
     env: LineFollowerEnv,
-    kp: float,
-    kd: float,
-    speed: float,
-    compute_action: Callable | None = None,
+    controller: BangBangController | PDController,
     verbose: int = 1,
 ) -> tuple[float, float]:
     env.reset_lap_times()
     observation, _ = env.reset()
     env.render()
 
-    prev_lateral_error = float(observation[IDX_LATERAL_ERROR])
+    # Initialize lateral error
+    lateral_error = prev_lateral_error = float(observation[IDX_LATERAL_ERROR])
 
     total_reward = 0.0
     step_count = 0
@@ -67,19 +93,15 @@ def evaluate(
     best_lap_time = float("inf")
     lap_count = 0
     # Function to compute the action
-    compute_action = compute_action or compute_pd_action
 
     while not done:
-        action, prev_lateral_error = compute_pd_action(
-            observation,
-            prev_lateral_error,
-            env.dt,
-            kp=kp,
-            kd=kd,
-            speed=speed,
-        )
+        action = controller.compute_action(lateral_error, prev_lateral_error)
 
         observation, reward, terminated, truncated, info = env.step(action)
+        prev_lateral_error = lateral_error
+        # Retrieve current lateral error (cross track error) from observation
+        lateral_error = float(observation[IDX_LATERAL_ERROR])
+
         env.render()
 
         if info["lap_count"] > lap_count:
@@ -101,7 +123,7 @@ def evaluate(
 
 def optimize(
     env: LineFollowerEnv,
-    speed: float = 0.5,
+    controller: PDController,
     pop_std: float = 0.001,
     pop_size: int = 10,
     n_iterations: int = 10,
@@ -117,7 +139,9 @@ def optimize(
         candidates = np.abs([best_gains + np.random.normal(0.0, pop_std, size=2) for _ in range(pop_size)])
 
         for candidate in candidates:
-            lap_time, _ = evaluate(env, kp=candidate[0], kd=candidate[1], speed=speed, verbose=0)
+            controller.kp = candidate[0]
+            controller.kd = candidate[1]
+            lap_time, _ = evaluate(env, controller, verbose=0)
             if lap_time < best_lap_time:
                 best_lap_time = lap_time
                 best_gains = candidate
@@ -135,9 +159,9 @@ def main() -> None:
     parser.add_argument(
         "--track",
         type=str,
-        default="oval",
+        default="s_track",
         choices=list(TRACK_BUILDERS.keys()),
-        help="Name of the built-in track to use (default: oval).",
+        help="Name of the built-in track to use (default: s_track).",
     )
     parser.add_argument(
         "--optimize",
@@ -157,11 +181,14 @@ def main() -> None:
     max_episode_steps = 500 if args.optimize else 1000
     env = LineFollowerEnv(track_name=args.track, render_mode=render_mode, max_episode_steps=max_episode_steps)
 
+    # controller = PDController(kp=0.00446, kd=0.01050, dt=env.dt, speed=0.5)
+    controller = BangBangController(steering_step=0.01, speed=0.1)
+
     if args.optimize:
-        kp, kd = optimize(env, n_iterations=10, speed=0.5)
+        kp, kd = optimize(env, PDController(speed=0.5, dt=env.dt), n_iterations=10)
         print(f"Optimized gains: {kp=:.5f}, {kd=:.5f}")
     else:
-        evaluate(env, kp=0.001, kd=0.0005, speed=0.5)
+        evaluate(env, controller)
         # evaluate(env, kp=0.00408, kd=0.00734, speed=0.5)
 
     env.close()

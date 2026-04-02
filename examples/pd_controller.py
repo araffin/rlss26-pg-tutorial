@@ -10,7 +10,7 @@ Run with::
     python examples/pd_controller.py --drift
     python examples/pd_controller.py --drift --grip 0.5 --yaw-damping 0.7
 
-Available tracks: ``oval`` (default), ``s_track``, ``rounded_l``, ``hairpin``.
+Available tracks: ``oval``, ``s_track``, ``rounded_l``, ``hairpin``.
 
 The controller reads the *lateral error* and *heading error* from the
 observation vector and computes a steering correction using proportional
@@ -113,9 +113,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--track",
         type=str,
-        default="oval",
+        default="s_track",
         choices=list(TRACK_BUILDERS.keys()),
-        help="Name of the built-in track to use (default: oval).",
+        help="Name of the built-in track to use (default: s_track).",
     )
     parser.add_argument(
         "--racing",
