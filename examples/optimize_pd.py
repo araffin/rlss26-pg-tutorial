@@ -24,7 +24,7 @@ IDX_LATERAL_ERROR_DERIVATIVE: int = 2
 class BangBangController:
     steering_step: float = 0.3
     speed: float = 0.5
-    error_threshold: float = 0.5
+    error_threshold: float = 0.0
 
     def compute_action(
         self,
@@ -180,7 +180,12 @@ def main() -> None:
     if args.no_render:
         render_mode = None
     max_episode_steps = 500 if args.optimize else 1000
-    env = LineFollowerEnv(track_name=args.track, render_mode=render_mode, max_episode_steps=max_episode_steps)
+    # inertia=0.1 for bang-bang to work
+    env = LineFollowerEnv(
+        track_name=args.track,
+        render_mode=render_mode,
+        max_episode_steps=max_episode_steps,
+    )
 
     # controller = PDController(kp=0.00446, kd=0.01050, dt=env.dt, speed=0.5)
     controller = BangBangController(steering_step=0.01, speed=0.1)
