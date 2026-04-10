@@ -1,21 +1,23 @@
 """
-A simple implementation of Policy Gradient with a linear policy for discrete action spaces.
+Linear Policy Gradient with Episodic Data Collection for Discrete Action Spaces.
+
+A simple implementation of Policy Gradient that collects one complete episode per iteration
+before updating the policy. This is the episodic version of the algorithm.
 
 Usage:
-    python pg_tutorial/pg/linear_policy_discrete.py [options]
+    python pg_tutorial/pg/linear_discrete_episodic.py [options]
 
 Options:
     --env-id STR          Environment ID (default: CartPole-v1)
     --seed INT            Random seed (default: 0)
-    --n-iterations INT    Number of training iterations (default: 1000)
-    --n-steps INT         Number of steps per iteration (default: 500)
+    --n-iterations INT    Number of training iterations/episodes (default: 1000)
     --gamma FLOAT         Discount factor (default: 1.0)
     --learning-rate FLOAT Learning rate (default: 0.01)
     --smoothing-window INT Smoothing window for statistics (default: 50)
     --log-freq INT        Logging frequency in iterations (default: 5)
 
 Example:
-    python pg_tutorial/pg/linear_policy_discrete.py --env-id CartPole-v1 --seed 42 --gamma 0.99
+    python pg_tutorial/pg/linear_discrete_episodic.py --env-id CartPole-v1 --seed 42 --gamma 0.99
 """
 
 import argparse
@@ -33,15 +35,14 @@ from tqdm.rich import TqdmExperimentalWarning, tqdm
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Policy Gradient with Linear Policy")
+    parser = argparse.ArgumentParser(description="Policy Gradient with Linear Policy (Episodic)")
 
     # Environment arguments
     parser.add_argument("--env-id", type=str, default="CartPole-v1", help="Environment ID")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
 
     # Hyperparameters
-    parser.add_argument("--n-iterations", type=int, default=1000, help="Number of training iterations")
-    parser.add_argument("--n-steps", type=int, default=500, help="Number of steps per iteration")
+    parser.add_argument("--n-iterations", type=int, default=1000, help="Number of training iterations/episodes")
     parser.add_argument("--gamma", type=float, default=1.0, help="Discount factor")
     parser.add_argument("--learning-rate", type=float, default=1e-2, help="Learning rate for optimizer")
     parser.add_argument(
@@ -99,7 +100,6 @@ if __name__ == "__main__":
     args = parse_args()
 
     env = gym.make(args.env_id)
-    # eval_env = gym.make(env_id)
 
     # Print config
     print(f"{args.seed=}")
@@ -107,7 +107,6 @@ if __name__ == "__main__":
     print(f"{args.gamma=}")
     print(f"{args.learning_rate=}")
     print(f"{args.n_iterations=}")
-    print(f"{args.n_steps=}")
     print(f"{args.smoothing_window=}")
     print(f"{args.log_freq=}")
 
@@ -119,7 +118,6 @@ if __name__ == "__main__":
     obs_shape = env.observation_space.shape
     obs_dim = int(np.prod(obs_shape))
     n_actions = int(env.action_space.n)
-    # action_dim = 1  # discrete actions, integer actions
     total_timesteps = 0
 
     # Pseudo-random generator seeding for reproducible results
@@ -132,98 +130,65 @@ if __name__ == "__main__":
     # Create the optimizer
     optimizer = th.optim.Adam(policy.parameters(), lr=args.learning_rate)
 
-    # Storage for data collection
-    observations = th.zeros(args.n_steps, *obs_shape)
-    # Discrete actions: th.long is for integers
-    actions = th.zeros(args.n_steps, dtype=th.long)
-    rewards = th.zeros(args.n_steps)
-    terminations = th.zeros(args.n_steps)
-    truncations = th.zeros(args.n_steps)
-    episode_starts = th.zeros(args.n_steps, dtype=th.bool)
-
     # Report some statistics, mean over last episodes
-    current_episode_reward = 0.0
-    current_episode_length = 0
     episode_returns: deque[float] = deque(maxlen=args.smoothing_window)
     episode_lengths: deque[int] = deque(maxlen=args.smoothing_window)
     n_episodes = 0
     start_time = time.monotonic()
 
-    current_obs, _ = env.reset(seed=args.seed)
-    last_episode_starts = True
-
     for iteration in tqdm(range(1, args.n_iterations + 1)):
-        # for iteration in tqdm(range(1, args.n_iterations + 1)):
-        # TODO: make it episodic? -> collect n episodes
-        for step in range(args.n_steps):
-            # Sample action with current policy and store
-            # the log prob of taking the action for later
-            action = policy.get_action(th.as_tensor(current_obs))
+        # Collect one episode
+        observations: list[th.Tensor] = []
+        actions: list[th.Tensor] = []
+        rewards: list[float] = []
 
-            # Convert from th.Tensor to integer
-            env_action = int(action)
+        # Only seed for the very first episode
+        current_obs, _ = env.reset(seed=args.seed if iteration == 0 else None)
+        done = False
+
+        while not done:
+            # Sample action with current policy
+            obs_tensor = th.as_tensor(current_obs)
+            action = policy.get_action(obs_tensor)
+
+            # Store transitions
+            observations.append(obs_tensor)
+            actions.append(action)
 
             # Step in the env
-            next_obs, reward, terminated, truncated, _ = env.step(env_action)
-            # Store the transition
-            observations[step] = th.as_tensor(current_obs)
-            actions[step] = action
-            rewards[step] = float(reward)
-            terminations[step] = terminated
-            truncations[step] = truncated
-            episode_starts[step] = last_episode_starts
-            current_episode_length += 1
+            next_obs, reward, terminated, truncated, _ = env.step(int(action))
+            # Check if the episode is over
+            done = terminated or truncated
+
+            # Store the reward
+            rewards.append(float(reward))
             total_timesteps += 1
-
-            # Logging
-            current_episode_reward += float(reward)
-
-            last_episode_starts = terminated or truncated
-            # New episode
-            if last_episode_starts:
-                episode_returns.append(current_episode_reward)
-                episode_lengths.append(current_episode_length)
-                current_episode_reward = 0.0
-                current_episode_length = 0
-                n_episodes += 1
-                next_obs, _ = env.reset()
 
             # Update current obs
             current_obs = next_obs
 
-        # Note(antonin): the current code doesn't handle truncation properly
-        # See https://github.com/DLR-RM/stable-baselines3/issues/633
-        # One way is to augment the reward when the episode is truncated:
-        # terminal_reward = terminal_reward + gamma * value_fn(terminal_state)
-        dones = th.logical_or(terminations, truncations)
+        # Convert lists to tensors
+        obs_tensor = th.stack(observations)
+        actions_tensor = th.stack(actions)
+        rewards_tensor = th.tensor(rewards)
 
-        # Compute discounted reward to go
-        discounted_returns = th.zeros(args.n_steps)
-        # Intialize with terminal reward
-        # TODO: bootstrap with value when truncating the episode (truncated | terminated = False)
-        current_return = rewards[-1]
-        discounted_returns[-1] = rewards[-1]
-        for step in reversed(range(args.n_steps - 1)):
-            next_step_terminal = not episode_starts[step + 1]
-            current_return = rewards[step] + next_step_terminal * args.gamma * current_return
+        # Compute discounted returns
+        discounted_returns = th.zeros(len(rewards))
+        current_return = 0.0
+        for step in reversed(range(len(rewards))):
+            current_return = rewards[step] + args.gamma * current_return
             discounted_returns[step] = current_return
 
-        # Advantage computation
-        # baseline = rewards.mean()
-        baseline = 0
-        advantages = discounted_returns - baseline
+        # Compute advantages (with baseline of 0)
+        advantages = discounted_returns
 
-        # Normalize advantages (optional, commented out in original)
-        # advantages = (advantages - advantages.mean()) / advantages.std()
         # Update the policy with policy gradient loss
-        log_probs = policy.get_log_prob(observations, actions)
+        log_probs = policy.get_log_prob(obs_tensor, actions_tensor)
         pg_loss = -(advantages * log_probs).mean()
 
-        # backpropagate and do the gradient update
+        # Backpropagate and update
         optimizer.zero_grad()
         pg_loss.backward()
-        # For later, for stability:
-        # nn.utils.clip_grad_norm_(policy.parameters(), max_norm=0.5)
         optimizer.step()
 
         # Logging
@@ -239,3 +204,9 @@ if __name__ == "__main__":
             print(f"time/{fps=:.2f}")
             print(f"train/{pg_loss=:.4f}")
             print("=" * 30)
+
+        n_episodes += 1
+        episode_lengths.append(len(rewards))
+        episode_returns.append(sum(rewards))
+
+    env.close()
