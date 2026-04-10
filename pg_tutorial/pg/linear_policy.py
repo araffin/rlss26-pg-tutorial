@@ -24,7 +24,7 @@ class LinearPolicy(nn.Module):
     def __init__(self, obs_dim: int = 2, action_dim: int = 2) -> None:
         super().__init__()
         # TODO: try with no bias
-        self.net = nn.Linear(obs_dim, action_dim)
+        self.net = nn.Linear(obs_dim, action_dim, bias=True)
 
     def get_action(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # logits are un-normalized probabilities of taking each action
@@ -36,12 +36,13 @@ class LinearPolicy(nn.Module):
             return action_dist.mode
         return action_dist.sample()
 
-    def forward(self, observation: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
-        logits = self.net(observation)
+    def forward(self, observation: th.Tensor) -> th.Tensor:
+        return self.get_action(observation)
+
+    def get_log_prob(self, observations: th.Tensor, actions: th.Tensor) -> th.Tensor:
+        logits = self.net(observations)
         action_dist = Categorical(logits=logits)
-        action = action_dist.sample()
-        log_prob = action_dist.log_prob(action)
-        return action, log_prob
+        return action_dist.log_prob(actions)
 
 
 if __name__ == "__main__":
@@ -49,11 +50,17 @@ if __name__ == "__main__":
     env = gym.make(env_id)
     # eval_env = gym.make(env_id)
 
-    n_iterations = 20
+    n_iterations = 1000
     seed = 0
+    # seed = np.random.randint(2**32 - 1)
     gamma = 0.99  # discount factor
-    learning_rate = 3e-4
+    learning_rate = 7e-4
     # env = gym.make("Pendulum-v1")
+    # Print config
+    print(f"{seed=}")
+    print(f"{env_id=}")
+    print(f"{gamma=}")
+    print(f"{learning_rate=}")
 
     assert isinstance(env.observation_space, gym.spaces.Box)
     # Discrete actions
@@ -62,8 +69,8 @@ if __name__ == "__main__":
     # Env info
     obs_shape = env.observation_space.shape
     obs_dim = int(np.prod(obs_shape))
-    n_actions = env.action_space.n
-    action_dim = 1  # discrete actions, integer actions
+    n_actions = int(env.action_space.n)
+    # action_dim = 1  # discrete actions, integer actions
     n_steps = 500
     total_timesteps = 0
 
@@ -72,15 +79,15 @@ if __name__ == "__main__":
     th.manual_seed(seed)
 
     # Instantiate the policy
-    policy = LinearPolicy(obs_dim, action_dim)
+    policy = LinearPolicy(obs_dim, n_actions)
 
     # Create the optimizer
     optimizer = th.optim.Adam(policy.parameters(), lr=learning_rate)
 
     # Storage for data collection
     observations = th.zeros(n_steps, *obs_shape)
-    actions = th.zeros(n_steps, action_dim)
-    log_probs = th.zeros(n_steps)
+    # Discrete actions: th.long is for integers
+    actions = th.zeros(n_steps, dtype=th.long)
     rewards = th.zeros(n_steps)
     terminations = th.zeros(n_steps)
     truncations = th.zeros(n_steps)
@@ -94,19 +101,18 @@ if __name__ == "__main__":
     episode_lengths: deque[int] = deque(maxlen=smoothing_window)
     n_episodes = 0
     start_time = time.monotonic()
+    log_freq = 5
 
     current_obs, _ = env.reset(seed=seed)
     last_episode_starts = True
 
-    for iteration in range(1, n_iterations + 1):
-        print("=" * 20)
-        print(f"{iteration=}/{n_iterations}")
-
+    for iteration in tqdm(range(1, n_iterations + 1)):
+        # for iteration in tqdm(range(1, n_iterations + 1)):
         # TODO: make it episodic? -> collect n episodes
         for step in range(n_steps):
             # Sample action with current policy and store
             # the log prob of taking the action for later
-            action, log_prob = policy(th.as_tensor(current_obs))
+            action = policy.get_action(th.as_tensor(current_obs))
 
             # Convert from th.Tensor to integer
             env_action = int(action)
@@ -116,7 +122,6 @@ if __name__ == "__main__":
             # Store the transition
             observations[step] = th.as_tensor(current_obs)
             actions[step] = action
-            log_probs[step] = log_prob
             rewards[step] = float(reward)
             terminations[step] = terminated
             truncations[step] = truncated
@@ -158,25 +163,32 @@ if __name__ == "__main__":
             discounted_returns[step] = current_return
 
         # Advantage computation
+        # baseline = rewards.mean()
         baseline = 0
         advantages = discounted_returns - baseline
 
+        # advantages = (advantages - advantages.mean()) / advantages.std()
         # Update the policy with policy gradient loss
+        log_probs = policy.get_log_prob(observations, actions)
         pg_loss = -(advantages * log_probs).mean()
+
         # backpropagate and do the gradient update
         optimizer.zero_grad()
         pg_loss.backward()
         # For later, for stability:
-        # nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)
+        # nn.utils.clip_grad_norm_(policy.parameters(), max_norm=0.5)
         optimizer.step()
 
         # Logging
-        time_elapsed = time.monotonic() - start_time
-        fps = total_timesteps / time_elapsed
-        print(f"rollout/{n_episodes=}")
-        print(f"rollout/{np.mean(episode_returns)=:.2f} +/- {np.std(episode_returns):.2f}")
-        print(f"rollout/{np.mean(episode_lengths)=:.2f} +/- {np.std(episode_lengths):.2f}")
-        print(f"time/{time_elapsed=:.0f}")
-        print(f"time/{fps=:.2f}")
-        print(f"train/{pg_loss=:.2f}")
-        print("=" * 20)
+        if (iteration % log_freq) == 0:
+            print(f" {iteration=}/{n_iterations} ".center(30, "="))
+            time_elapsed = time.monotonic() - start_time
+            fps = total_timesteps / time_elapsed
+            print(f"rollout/{n_episodes=}")
+            print(f"rollout/{np.mean(episode_returns)=:.2f} +/- {np.std(episode_returns):.2f}")
+            print(f"rollout/{np.mean(episode_lengths)=:.2f} +/- {np.std(episode_lengths):.2f}")
+            print(f"time/{total_timesteps=}")
+            print(f"time/{time_elapsed=:.0f}")
+            print(f"time/{fps=:.2f}")
+            print(f"train/{pg_loss=:.4f}")
+            print("=" * 30)
