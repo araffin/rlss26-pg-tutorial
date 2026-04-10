@@ -1,3 +1,26 @@
+"""
+Linear Policy Gradient Tutorial
+
+A simple implementation of Policy Gradient with a linear policy for discrete action spaces.
+
+Usage:
+    python -m pg.linear_policy [options]
+
+Options:
+    --env-id STR          Environment ID (default: CartPole-v1)
+    --seed INT            Random seed (default: 0)
+    --n-iterations INT    Number of training iterations (default: 1000)
+    --n-steps INT         Number of steps per iteration (default: 500)
+    --gamma FLOAT         Discount factor (default: 1.0)
+    --learning-rate FLOAT Learning rate (default: 0.01)
+    --smoothing-window INT Smoothing window for statistics (default: 50)
+    --log-freq INT        Logging frequency in iterations (default: 5)
+
+Example:
+    python -m pg.linear_policy --env-id CartPole-v1 --seed 42 --gamma 0.99
+"""
+
+import argparse
 import time
 import warnings
 from collections import deque
@@ -8,6 +31,36 @@ import torch as th
 import torch.nn as nn
 from torch.distributions import Categorical
 from tqdm.rich import TqdmExperimentalWarning, tqdm
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Policy Gradient with Linear Policy")
+
+    # Environment arguments
+    parser.add_argument("--env-id", type=str, default="CartPole-v1", help="Environment ID")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
+
+    # Hyperparameters
+    parser.add_argument("--n-iterations", type=int, default=1000, help="Number of training iterations")
+    parser.add_argument("--n-steps", type=int, default=500, help="Number of steps per iteration")
+    parser.add_argument("--gamma", type=float, default=1.0, help="Discount factor")
+    parser.add_argument("--learning-rate", type=float, default=1e-2, help="Learning rate for optimizer")
+    parser.add_argument(
+        "--smoothing-window",
+        type=int,
+        default=50,
+        help="Smoothing window for episode statistics",
+    )
+    parser.add_argument(
+        "--log-freq",
+        type=int,
+        default=5,
+        help="Frequency of logging (in iterations)",
+    )
+
+    return parser.parse_args()
+
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -45,21 +98,20 @@ class LinearPolicy(nn.Module):
 
 
 if __name__ == "__main__":
-    env_id = "CartPole-v1"
-    env = gym.make(env_id)
+    args = parse_args()
+
+    env = gym.make(args.env_id)
     # eval_env = gym.make(env_id)
 
-    n_iterations = 1000
-    seed = 0
-    # seed = np.random.randint(2**32 - 1)
-    gamma = 1.0  # discount factor
-    learning_rate = 1e-2
-    # env = gym.make("Pendulum-v1")
     # Print config
-    print(f"{seed=}")
-    print(f"{env_id=}")
-    print(f"{gamma=}")
-    print(f"{learning_rate=}")
+    print(f"{args.seed=}")
+    print(f"{args.env_id=}")
+    print(f"{args.gamma=}")
+    print(f"{args.learning_rate=}")
+    print(f"{args.n_iterations=}")
+    print(f"{args.n_steps=}")
+    print(f"{args.smoothing_window=}")
+    print(f"{args.log_freq=}")
 
     assert isinstance(env.observation_space, gym.spaces.Box)
     # Discrete actions
@@ -70,45 +122,42 @@ if __name__ == "__main__":
     obs_dim = int(np.prod(obs_shape))
     n_actions = int(env.action_space.n)
     # action_dim = 1  # discrete actions, integer actions
-    n_steps = 500
     total_timesteps = 0
 
     # Pseudo-random generator seeding for reproducible results
-    np.random.seed(seed)
-    th.manual_seed(seed)
+    np.random.seed(args.seed)
+    th.manual_seed(args.seed)
 
     # Instantiate the policy
     policy = LinearPolicy(obs_dim, n_actions)
 
     # Create the optimizer
-    optimizer = th.optim.Adam(policy.parameters(), lr=learning_rate)
+    optimizer = th.optim.Adam(policy.parameters(), lr=args.learning_rate)
 
     # Storage for data collection
-    observations = th.zeros(n_steps, *obs_shape)
+    observations = th.zeros(args.n_steps, *obs_shape)
     # Discrete actions: th.long is for integers
-    actions = th.zeros(n_steps, dtype=th.long)
-    rewards = th.zeros(n_steps)
-    terminations = th.zeros(n_steps)
-    truncations = th.zeros(n_steps)
-    episode_starts = th.zeros(n_steps, dtype=th.bool)
+    actions = th.zeros(args.n_steps, dtype=th.long)
+    rewards = th.zeros(args.n_steps)
+    terminations = th.zeros(args.n_steps)
+    truncations = th.zeros(args.n_steps)
+    episode_starts = th.zeros(args.n_steps, dtype=th.bool)
 
     # Report some statistics, mean over last episodes
     current_episode_reward = 0.0
     current_episode_length = 0
-    smoothing_window = 50
-    episode_returns: deque[float] = deque(maxlen=smoothing_window)
-    episode_lengths: deque[int] = deque(maxlen=smoothing_window)
+    episode_returns: deque[float] = deque(maxlen=args.smoothing_window)
+    episode_lengths: deque[int] = deque(maxlen=args.smoothing_window)
     n_episodes = 0
     start_time = time.monotonic()
-    log_freq = 5
 
-    current_obs, _ = env.reset(seed=seed)
+    current_obs, _ = env.reset(seed=args.seed)
     last_episode_starts = True
 
-    for iteration in tqdm(range(1, n_iterations + 1)):
-        # for iteration in tqdm(range(1, n_iterations + 1)):
+    for iteration in tqdm(range(1, args.n_iterations + 1)):
+        # for iteration in tqdm(range(1, args.n_iterations + 1)):
         # TODO: make it episodic? -> collect n episodes
-        for step in range(n_steps):
+        for step in range(args.n_steps):
             # Sample action with current policy and store
             # the log prob of taking the action for later
             action = policy.get_action(th.as_tensor(current_obs))
@@ -151,14 +200,14 @@ if __name__ == "__main__":
         dones = th.logical_or(terminations, truncations)
 
         # Compute discounted reward to go
-        discounted_returns = th.zeros(n_steps)
+        discounted_returns = th.zeros(args.n_steps)
         # Intialize with terminal reward
         # TODO: bootstrap with value when truncating the episode (truncated | terminated = False)
         current_return = rewards[-1]
         discounted_returns[-1] = rewards[-1]
-        for step in reversed(range(n_steps - 1)):
+        for step in reversed(range(args.n_steps - 1)):
             next_step_terminal = not episode_starts[step + 1]
-            current_return = rewards[step] + next_step_terminal * gamma * current_return
+            current_return = rewards[step] + next_step_terminal * args.gamma * current_return
             discounted_returns[step] = current_return
 
         # Advantage computation
@@ -166,6 +215,7 @@ if __name__ == "__main__":
         baseline = 0
         advantages = discounted_returns - baseline
 
+        # Normalize advantages (optional, commented out in original)
         # advantages = (advantages - advantages.mean()) / advantages.std()
         # Update the policy with policy gradient loss
         log_probs = policy.get_log_prob(observations, actions)
@@ -179,8 +229,8 @@ if __name__ == "__main__":
         optimizer.step()
 
         # Logging
-        if (iteration % log_freq) == 0:
-            print(f" {iteration=}/{n_iterations} ".center(30, "="))
+        if (iteration % args.log_freq) == 0:
+            print(f" {iteration=}/{args.n_iterations} ".center(30, "="))
             time_elapsed = time.monotonic() - start_time
             fps = total_timesteps / time_elapsed
             print(f"rollout/{n_episodes=}")
