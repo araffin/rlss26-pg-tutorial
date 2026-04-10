@@ -79,6 +79,7 @@ class LinearPolicy(nn.Module):
 
     def get_action(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # logits are un-normalized probabilities of taking each action
+        # Here, this is the same as logits = weights @ observations (matrix multiplication)
         logits = self.net(observation)
         # A convenience class to sample, compute probabilties and find the argmax
         action_dist = Categorical(logits=logits)
@@ -137,6 +138,7 @@ if __name__ == "__main__":
     start_time = time.monotonic()
 
     for iteration in tqdm(range(1, args.n_iterations + 1)):
+        # for iteration in range(1, args.n_iterations + 1):
         # Collect one episode
         observations: list[th.Tensor] = []
         actions: list[th.Tensor] = []
