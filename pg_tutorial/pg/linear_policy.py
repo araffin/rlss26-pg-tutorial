@@ -23,8 +23,7 @@ class LinearPolicy(nn.Module):
 
     def __init__(self, obs_dim: int = 2, action_dim: int = 2) -> None:
         super().__init__()
-        # TODO: try with no bias
-        self.net = nn.Linear(obs_dim, action_dim, bias=True)
+        self.net = nn.Linear(obs_dim, action_dim, bias=False)
 
     def get_action(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # logits are un-normalized probabilities of taking each action
@@ -53,8 +52,8 @@ if __name__ == "__main__":
     n_iterations = 1000
     seed = 0
     # seed = np.random.randint(2**32 - 1)
-    gamma = 0.99  # discount factor
-    learning_rate = 7e-4
+    gamma = 1.0  # discount factor
+    learning_rate = 1e-2
     # env = gym.make("Pendulum-v1")
     # Print config
     print(f"{seed=}")
