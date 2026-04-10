@@ -1,10 +1,8 @@
 """
-Linear Policy Gradient Tutorial
-
 A simple implementation of Policy Gradient with a linear policy for discrete action spaces.
 
 Usage:
-    python -m pg.linear_policy [options]
+    python -m pg.linear_policy_discrete [options]
 
 Options:
     --env-id STR          Environment ID (default: CartPole-v1)
@@ -17,7 +15,7 @@ Options:
     --log-freq INT        Logging frequency in iterations (default: 5)
 
 Example:
-    python -m pg.linear_policy --env-id CartPole-v1 --seed 42 --gamma 0.99
+    python -m pg.linear_policy_discrete --env-id CartPole-v1 --seed 42 --gamma 0.99
 """
 
 import argparse
