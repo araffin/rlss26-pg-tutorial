@@ -1,11 +1,11 @@
 """
-Linear Policy Gradient with Episodic Data Collection for Discrete Action Spaces.
+Policy Gradient with Episodic Data Collection for Discrete Action Spaces.
 
 A simple implementation of Policy Gradient that collects one complete episode per iteration
-before updating the policy. This is the episodic version of the algorithm.
+before updating the policy.
 
 Usage:
-    python pg_tutorial/pg/linear_discrete_episodic.py [options]
+    python pg_tutorial/pg/discrete_actions_episodic.py [options]
 
 Options:
     --env-id STR          Environment ID (default: CartPole-v1)
@@ -17,7 +17,7 @@ Options:
     --log-freq INT        Logging frequency in iterations (default: 5)
 
 Example:
-    python pg_tutorial/pg/linear_discrete_episodic.py --env-id CartPole-v1 --seed 42 --gamma 0.99
+    python pg_tutorial/pg/discrete_actions_episodic.py --env-id CartPole-v1 --seed 42 --gamma 0.99
 """
 
 import argparse

@@ -1,8 +1,9 @@
 """
 A simple implementation of Policy Gradient with a linear policy for discrete action spaces.
+It collects one `n_steps` transitions per iteration before updating the policy.
 
 Usage:
-    python pg_tutorial/pg/linear_policy_discrete.py [options]
+    python pg_tutorial/pg/discrete_actions_steps.py [options]
 
 Options:
     --env-id STR          Environment ID (default: CartPole-v1)
@@ -15,7 +16,7 @@ Options:
     --log-freq INT        Logging frequency in iterations (default: 5)
 
 Example:
-    python pg_tutorial/pg/linear_policy_discrete.py --env-id CartPole-v1 --seed 42 --gamma 0.99
+    python pg_tutorial/pg/discrete_actions_steps.py --env-id CartPole-v1 --seed 42 --gamma 0.99
 """
 
 import argparse
