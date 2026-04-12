@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-steps", type=int, default=500, help="Number of steps per iteration")
     parser.add_argument("--gamma", type=float, default=1.0, help="Discount factor")
     parser.add_argument("--learning-rate", type=float, default=1e-2, help="Learning rate for optimizer")
+
+    # Logging
     parser.add_argument(
         "--smoothing-window",
         type=int,

@@ -1,14 +1,14 @@
 """
-Policy Gradient with Episodic Data Collection for Discrete Action Spaces.
+Policy Gradient with Episodic Data Collection for Continuous Action Spaces.
 
 A simple implementation of Policy Gradient that collects one complete episode per iteration
 before updating the policy.
 
 Usage:
-    python pg_tutorial/pg/discrete_actions_episodic.py [options]
+    python pg_tutorial/pg/continuous_actions_episodic.py [options]
 
 Options:
-    --env-id STR          Environment ID (default: CartPole-v1)
+    --env-id STR          Environment ID (default: LunarLanderContinuous-v3)
     --seed INT            Random seed (default: 0)
     --n-iterations INT    Number of training iterations/episodes (default: 1000)
     --gamma FLOAT         Discount factor (default: 1.0)
@@ -17,7 +17,7 @@ Options:
     --log-freq INT        Logging frequency in iterations (default: 5)
 
 Example:
-    python pg_tutorial/pg/discrete_actions_episodic.py --env-id CartPole-v1 --seed 42 --gamma 0.99
+    python pg_tutorial/pg/continuous_actions_episodic.py --env-id LunarLanderContinuous-v3 --seed 42 --gamma 0.99
 """
 
 import argparse
@@ -29,7 +29,7 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 import torch.nn as nn
-from torch.distributions import Categorical
+from torch.distributions import Normal
 from tqdm.rich import TqdmExperimentalWarning, tqdm
 
 
@@ -37,12 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Policy Gradient with Linear Policy (Episodic)")
 
     # Environment arguments
-    parser.add_argument("--env-id", type=str, default="CartPole-v1", help="Environment ID")
+    parser.add_argument("--env-id", type=str, default="LunarLanderContinuous-v3", help="Environment ID")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
 
     # Hyperparameters
     parser.add_argument("--n-iterations", type=int, default=1000, help="Number of training iterations/episodes")
-    parser.add_argument("--gamma", type=float, default=1.0, help="Discount factor")
+    parser.add_argument("--gamma", type=float, default=0.98, help="Discount factor")
     parser.add_argument("--learning-rate", type=float, default=1e-2, help="Learning rate for optimizer")
 
     # Logging
@@ -71,21 +71,27 @@ class LinearPolicy(nn.Module):
     in the discrete action setting.
 
     :param obs_dim: Dimension of the observation space (we assume that the observation is a 1D vector)
-    :param action_dim: Dimension of the action space (here the number of discrete actions)
+    :param action_dim: Dimension of the action space
+    :param std_init: Initial standard deviation
     """
 
-    def __init__(self, obs_dim: int = 2, action_dim: int = 2) -> None:
+    def __init__(self, obs_dim: int = 2, action_dim: int = 2, std_init: float = 1.0) -> None:
         super().__init__()
-        self.net = nn.Linear(obs_dim, action_dim, bias=False)
+        self.net = nn.Linear(obs_dim, action_dim, bias=True)
+        # State-Independent log standard deviation
+        # We use the log to make sure std > 0
+        # Note: we could make it state-dependent by having another network
+        # that outputs the std (self.net = Linear(obs_dim, action_dim * 2))
+        self.log_std = nn.Parameter(th.ones(action_dim) * np.log(std_init))
 
     def get_action(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        # logits are un-normalized probabilities of taking each action
-        # Here, this is the same as logits = weights @ observations (matrix multiplication)
-        logits = self.net(observation)
-        # A convenience class to sample, compute probabilties and find the argmax
-        action_dist = Categorical(logits=logits)
+        # Here, this is the same as action_mean = weights @ observations + bias (matrix multiplication)
+        action_mean = self.net(observation)
+        action_std = th.ones_like(action_mean) * self.log_std.exp()
+        # A convenience class to sample, compute probabilties and find the best action
+        action_dist = Normal(action_mean, action_std)
         if deterministic:
-            # Same as th.argmax(action_dist, dim=-1), get the most likely action
+            # Get the most likely action (here same as action_mean)
             return action_dist.mode
         return action_dist.sample()
 
@@ -93,15 +99,19 @@ class LinearPolicy(nn.Module):
         return self.get_action(observation)
 
     def get_log_prob(self, observations: th.Tensor, actions: th.Tensor) -> th.Tensor:
-        logits = self.net(observations)
-        action_dist = Categorical(logits=logits)
-        return action_dist.log_prob(actions)
+        action_mean = self.net(observations)
+        action_std = th.ones_like(action_mean) * self.log_std.exp()
+        action_dist = Normal(action_mean, action_std)
+        # Sum all action dimensions (treating them as independent)
+        return action_dist.log_prob(actions).sum(dim=1)
 
 
 if __name__ == "__main__":
     args = parse_args()
 
     env = gym.make(args.env_id)
+    # Normalize obs to have mean ~ 0.0, std ~ 1.0
+    env = gym.wrappers.NormalizeObservation(env)
 
     # Print config
     print(f"{args.seed=}")
@@ -113,13 +123,13 @@ if __name__ == "__main__":
     print(f"{args.log_freq=}")
 
     assert isinstance(env.observation_space, gym.spaces.Box)
-    # Discrete actions
-    assert isinstance(env.action_space, gym.spaces.Discrete)
+    # Continuous actions
+    assert isinstance(env.action_space, gym.spaces.Box)
 
     # Env info
     obs_shape = env.observation_space.shape
     obs_dim = int(np.prod(obs_shape))
-    n_actions = int(env.action_space.n)
+    action_dim = int(np.prod(env.action_space.shape))
     total_timesteps = 0
 
     # Pseudo-random generator seeding for reproducible results
@@ -127,7 +137,7 @@ if __name__ == "__main__":
     th.manual_seed(args.seed)
 
     # Instantiate the policy
-    policy = LinearPolicy(obs_dim, n_actions)
+    policy = LinearPolicy(obs_dim, action_dim)
 
     # Create the optimizer
     optimizer = th.optim.Adam(policy.parameters(), lr=args.learning_rate)
@@ -158,8 +168,13 @@ if __name__ == "__main__":
             observations.append(obs_tensor)
             actions.append(action)
 
+            # Convert from Torch Tensor to NumPy array
+            action_np = action.numpy()
+            # Clip infinite support Gaussian to correct bounds
+            action_np = np.clip(action_np, env.action_space.low, env.action_space.high)
+
             # Step in the env
-            next_obs, reward, terminated, truncated, _ = env.step(int(action))
+            next_obs, reward, terminated, truncated, _ = env.step(action_np)
             # Check if the episode is over
             done = terminated or truncated
 
@@ -199,6 +214,7 @@ if __name__ == "__main__":
             print(f" {iteration=}/{args.n_iterations} ".center(30, "="))
             time_elapsed = time.monotonic() - start_time
             fps = total_timesteps / time_elapsed
+            std = policy.log_std.exp().mean().item()
             print(f"rollout/{n_episodes=}")
             print(f"rollout/{np.mean(episode_returns)=:.2f} +/- {np.std(episode_returns):.2f}")
             print(f"rollout/{np.mean(episode_lengths)=:.2f} +/- {np.std(episode_lengths):.2f}")
@@ -206,6 +222,7 @@ if __name__ == "__main__":
             print(f"time/{time_elapsed=:.0f}")
             print(f"time/{fps=:.2f}")
             print(f"train/{pg_loss=:.4f}")
+            print(f"train/{std=:.2f}")
             print("=" * 30)
 
         n_episodes += 1
