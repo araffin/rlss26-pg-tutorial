@@ -15,15 +15,20 @@ Options:
     --learning-rate FLOAT Learning rate (default: 0.01)
     --smoothing-window INT Smoothing window for statistics (default: 50)
     --log-freq INT        Logging frequency in iterations (default: 5)
+    --save-freq INT       Save checkpoint every n iterations (default: 0, disabled)
+    --save-dir STR        Directory to save models (default: logs/pg-episodic)
 
 Example:
     python pg_tutorial/pg/continuous_actions_episodic.py --env-id LunarLanderContinuous-v3 --seed 42 --gamma 0.99
 """
 
 import argparse
+import json
 import time
 import warnings
 from collections import deque
+from pathlib import Path
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -57,6 +62,20 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         help="Frequency of logging (in iterations)",
+    )
+
+    # Saving
+    parser.add_argument(
+        "--save-freq",
+        type=int,
+        default=0,
+        help="Save checkpoint every n iterations (default: 0, disabled)",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=str,
+        default="logs/pg-episodic",
+        help="Directory to save models",
     )
 
     return parser.parse_args()
@@ -106,12 +125,65 @@ class LinearPolicy(nn.Module):
         return action_dist.log_prob(actions).sum(dim=1)
 
 
+def get_normalizer_state(env: gym.Env) -> dict[str, Any] | None:
+    """Extract observation normalizer state from a NormalizeObservation wrapper."""
+    # Check if the environment has the normalize observation wrapper
+    if isinstance(env, gym.wrappers.NormalizeObservation):
+        return {
+            "obs_mean": env.obs_rms.mean,
+            "obs_var": env.obs_rms.var,
+            "epsilon": env.epsilon,
+        }
+    return None
+
+
+def save_policy(
+    policy: LinearPolicy,
+    save_dir: Path,
+    iteration: int,
+    env_id: str,
+    normalizer_state: dict[str, Any] | None = None,
+    gamma: float | None = None,
+    learning_rate: float | None = None,
+    seed: int | None = None,
+) -> None:
+    """Save the policy, hyperparameters and optionally the observation normalizer statistics."""
+    # Create directory if it doesn't exist
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save policy state
+    policy_path = save_dir / "policy.pt"
+    th.save(policy.state_dict(), policy_path)
+
+    # Save observation normalizer statistics if present
+    if normalizer_state is not None:
+        normalizer_path = save_dir / "obs_normalizer.pt"
+        th.save(normalizer_state, normalizer_path)
+
+    # Save hyperparameters
+    hyperparams = {
+        "env_id": env_id,
+        "iteration": iteration,
+        "gamma": gamma,
+        "learning_rate": learning_rate,
+        "seed": seed,
+    }
+    hyperparams_path = save_dir / "hyperparameters.json"
+    with open(hyperparams_path, "w") as f:
+        json.dump(hyperparams, f, indent=2)
+
+    print(f"Saved policy to {save_dir}")
+
+
 if __name__ == "__main__":
     args = parse_args()
 
     env = gym.make(args.env_id)
     # Normalize obs to have mean ~ 0.0, std ~ 1.0
     env = gym.wrappers.NormalizeObservation(env)
+
+    # Create save directory based on environment ID
+    save_dir = Path(args.save_dir) / args.env_id
 
     # Print config
     print(f"{args.seed=}")
@@ -121,6 +193,9 @@ if __name__ == "__main__":
     print(f"{args.n_iterations=}")
     print(f"{args.smoothing_window=}")
     print(f"{args.log_freq=}")
+    print(f"{args.save_freq=}")
+    print(f"{args.save_dir=}")
+    print(f"{save_dir=}")
 
     assert isinstance(env.observation_space, gym.spaces.Box)
     # Continuous actions
@@ -149,14 +224,13 @@ if __name__ == "__main__":
     start_time = time.monotonic()
 
     for iteration in tqdm(range(1, args.n_iterations + 1)):
-        # for iteration in range(1, args.n_iterations + 1):
         # Collect one episode
         observations: list[th.Tensor] = []
         actions: list[th.Tensor] = []
         rewards: list[float] = []
 
         # Only seed for the very first episode
-        current_obs, _ = env.reset(seed=args.seed if iteration == 0 else None)
+        current_obs, _ = env.reset(seed=args.seed if iteration == 1 else None)
         done = False
 
         while not done:
@@ -228,5 +302,34 @@ if __name__ == "__main__":
         n_episodes += 1
         episode_lengths.append(len(rewards))
         episode_returns.append(sum(rewards))
+
+        # Save checkpoint every n iterations if enabled
+        if args.save_freq > 0 and iteration % args.save_freq == 0:
+            checkpoint_dir = save_dir / f"checkpoint_{iteration}"
+            normalizer_state = get_normalizer_state(env)
+            save_policy(
+                policy,
+                checkpoint_dir,
+                iteration,
+                args.env_id,
+                normalizer_state,
+                args.gamma,
+                args.learning_rate,
+                args.seed,
+            )
+
+    # Save final policy
+    final_dir = save_dir / "final"
+    normalizer_state = get_normalizer_state(env)
+    save_policy(
+        policy,
+        final_dir,
+        args.n_iterations,
+        args.env_id,
+        normalizer_state,
+        args.gamma,
+        args.learning_rate,
+        args.seed,
+    )
 
     env.close()

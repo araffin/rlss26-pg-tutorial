@@ -146,7 +146,7 @@ if __name__ == "__main__":
         rewards: list[float] = []
 
         # Only seed for the very first episode
-        current_obs, _ = env.reset(seed=args.seed if iteration == 0 else None)
+        current_obs, _ = env.reset(seed=args.seed if iteration == 1 else None)
         done = False
 
         while not done:
