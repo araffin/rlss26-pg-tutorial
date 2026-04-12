@@ -37,6 +37,8 @@ import torch.nn as nn
 from torch.distributions import Normal
 from tqdm.rich import TqdmExperimentalWarning, tqdm
 
+import pg_tutorial.envs  # noqa: F401 (register custom envs)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Policy Gradient with Linear Policy (Episodic)")
@@ -84,6 +86,12 @@ def parse_args() -> argparse.Namespace:
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
 
+# def layer_init(layer: nn.Linear, std: float = 0.01, bias_const: float = 0.0):
+#     th.nn.init.orthogonal_(layer.weight, std)
+#     th.nn.init.constant_(layer.bias, bias_const)
+#     return layer
+
+
 class LinearPolicy(nn.Module):
     """
     A simple PyTorch model to represent a Linear policy
@@ -94,9 +102,10 @@ class LinearPolicy(nn.Module):
     :param std_init: Initial standard deviation
     """
 
-    def __init__(self, obs_dim: int = 2, action_dim: int = 2, std_init: float = 1.0) -> None:
+    def __init__(self, obs_dim: int = 2, action_dim: int = 2, std_init: float = 0.5) -> None:
         super().__init__()
         self.net = nn.Linear(obs_dim, action_dim, bias=True)
+        # self.net = nn.Sequential(nn.Linear(obs_dim, 16), nn.ReLU(), layer_init(nn.Linear(16, action_dim)))
         # State-Independent log standard deviation
         # We use the log to make sure std > 0
         # Note: we could make it state-dependent by having another network
@@ -227,6 +236,7 @@ if __name__ == "__main__":
     episode_lengths: deque[int] = deque(maxlen=args.smoothing_window)
     n_episodes = 0
     start_time = time.monotonic()
+    best_lap_time = last_lap_time = 0.0
 
     for iteration in tqdm(range(1, args.n_iterations + 1)):
         # Collect one episode
@@ -253,7 +263,7 @@ if __name__ == "__main__":
             action_np = np.clip(action_np, env.action_space.low, env.action_space.high)
 
             # Step in the env
-            next_obs, reward, terminated, truncated, _ = env.step(action_np)
+            next_obs, reward, terminated, truncated, info = env.step(action_np)
             # Check if the episode is over
             done = terminated or truncated
 
@@ -278,6 +288,7 @@ if __name__ == "__main__":
 
         # Compute advantages (with baseline of 0)
         advantages = discounted_returns
+        # advantages = advantages - advantages.mean()
 
         # Update the policy with policy gradient loss
         log_probs = policy.get_log_prob(obs_tensor, actions_tensor)
@@ -288,12 +299,23 @@ if __name__ == "__main__":
         pg_loss.backward()
         optimizer.step()
 
+        # Log racing metrics if available
+        if "best_lap_time" in info:
+            best_lap_time = info["best_lap_time"]
+        if "last_lap_time" in info:
+            last_lap_time = info["last_lap_time"]
+
         # Logging
         if (iteration % args.log_freq) == 0:
             print(f" {iteration=}/{args.n_iterations} ".center(30, "="))
             time_elapsed = time.monotonic() - start_time
             fps = total_timesteps / time_elapsed
             std = policy.log_std.exp().mean().item()
+            # Log racing metrics if available
+            if best_lap_time > 0.0:
+                print(f"racing/best_lap_time: {best_lap_time:.2f}s")
+                print(f"racing/last_lap_time: {last_lap_time:.2f}s")
+
             print(f"rollout/{n_episodes=}")
             print(f"rollout/{np.mean(episode_returns)=:.2f} +/- {np.std(episode_returns):.2f}")
             print(f"rollout/{np.mean(episode_lengths)=:.2f} +/- {np.std(episode_lengths):.2f}")

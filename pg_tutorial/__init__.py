@@ -25,3 +25,10 @@ register(
     max_episode_steps=1000,
     kwargs={"reward_mode": "racing"},
 )
+
+register(
+    id="LineFollowerRacingCustom-v0",
+    entry_point="pg_tutorial.envs.drift:LineFollowerDriftEnv",
+    max_episode_steps=1000,
+    kwargs={"reward_mode": "racingv2"},
+)

@@ -142,6 +142,7 @@ def evaluate_policy(
         episode_length = 0
 
         while not done:
+            env.render()
             obs_tensor = th.as_tensor(obs)
             with th.no_grad():
                 action = policy.get_action(obs_tensor, deterministic=deterministic)
