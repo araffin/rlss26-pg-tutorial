@@ -17,6 +17,7 @@ Example:
 import argparse
 import json
 from pathlib import Path
+from pprint import pprint
 
 import gymnasium as gym
 import numpy as np
@@ -42,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=10,
         help="Number of episodes to run for evaluation",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for evaluation (default: None, no seeding)",
     )
     parser.add_argument(
         "--deterministic",
@@ -80,7 +87,8 @@ def load_hyperparameters(model_dir: Path) -> dict:
         return {}
 
     hyperparams = json.loads(hyperparams_path.read_text())
-    print(f"Loaded hyperparameters: {hyperparams}")
+    print("Loaded hyperparameters:")
+    pprint(hyperparams)
     return hyperparams
 
 
@@ -99,12 +107,18 @@ class NormalizeObservationWrapper(gym.ObservationWrapper):
 
 def load_normalizer(env: gym.Env, model_dir: Path) -> gym.Env:
     """Load observation normalizer statistics if available."""
-    normalizer_path = model_dir / "obs_normalizer.pt"
+    normalizer_path = model_dir / "obs_normalizer.npz"
     if not normalizer_path.exists():
         print("No observation normalizer found, using raw observations")
         return env
 
-    normalizer_state = th.load(normalizer_path, weights_only=False)
+    # Load normalizer state using numpy
+    normalizer_data = np.load(normalizer_path)
+    normalizer_state = {
+        "obs_mean": normalizer_data["obs_mean"],
+        "obs_var": normalizer_data["obs_var"],
+        "epsilon": float(normalizer_data["epsilon"]),
+    }
 
     print("Loaded obs normalizer")
     return NormalizeObservationWrapper(env, **normalizer_state)
@@ -115,13 +129,14 @@ def evaluate_policy(
     env: gym.Env,
     n_episodes: int,
     deterministic: bool = False,
+    seed: int | None = None,
 ) -> tuple[list[float], list[int]]:
     """Evaluate the policy and return episode returns and lengths."""
     episode_returns: list[float] = []
     episode_lengths: list[int] = []
 
     for episode in range(n_episodes):
-        obs, _ = env.reset()
+        obs, _ = env.reset(seed=seed if episode == 0 else None)
         done = False
         episode_return = 0.0
         episode_length = 0
@@ -156,6 +171,12 @@ if __name__ == "__main__":
     model_dir = Path(args.model_path)
     if not model_dir.exists():
         raise FileNotFoundError(f"Model directory not found: {model_dir}")
+
+    # Set random seed if provided
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        th.manual_seed(args.seed)
+        print(f"Set seed to {args.seed}")
 
     # Load hyperparameters to get the environment ID
     hyperparams = load_hyperparameters(model_dir)

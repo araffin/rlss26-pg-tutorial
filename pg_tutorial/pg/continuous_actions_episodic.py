@@ -157,8 +157,13 @@ def save_policy(
 
     # Save observation normalizer statistics if present
     if normalizer_state is not None:
-        normalizer_path = save_dir / "obs_normalizer.pt"
-        th.save(normalizer_state, normalizer_path)
+        normalizer_path = save_dir / "obs_normalizer.npz"
+        np.savez(
+            normalizer_path,
+            obs_mean=normalizer_state["obs_mean"],
+            obs_var=normalizer_state["obs_var"],
+            epsilon=normalizer_state["epsilon"],
+        )
 
     # Save hyperparameters
     hyperparams = {
