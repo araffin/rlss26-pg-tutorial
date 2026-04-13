@@ -349,6 +349,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
     def _compute_reward(self, forward_velocity: float, lateral_error: float, heading_error: float) -> float:
         """Line-following reward.  Subclasses can override for other modes."""
+        # TODO: try to convert to reward using exp(-x^2/var) instead of cost
         lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
         heading_penalty = -((heading_error / np.pi) ** 2)
         forward_reward = max(forward_velocity * math.cos(heading_error), 0.0) * 0.01
