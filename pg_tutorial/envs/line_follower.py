@@ -347,8 +347,18 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
         self.current_lap_time = (self.step_count - self.lap_start_step) * self.dt
 
-    def _compute_reward(self, forward_velocity: float, lateral_error: float, heading_error: float) -> float:
+    def _compute_reward(
+        self,
+        forward_velocity: float,
+        lateral_error: float,
+        heading_error: float,
+        *,
+        going_reverse: bool = False,
+    ) -> float:
         """Line-following reward.  Subclasses can override for other modes."""
+        if going_reverse:
+            return -10.0
+
         # TODO: try to convert to reward using exp(-x^2/var) instead of cost
         lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
         heading_penalty = -((heading_error / np.pi) ** 2)
@@ -371,12 +381,16 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         lateral_error, heading_error, _ = self._compute_track_errors()
         self._update_lap_detection()
 
-        # ---- reward -------------------------------------------------------
-        reward: float = self._compute_reward(forward_velocity, lateral_error, heading_error)
-
         # ---- termination / truncation -------------------------------------
-        # Off-track or going backward
-        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0
+        # Going reverse: facing the wrong way on the track while moving forward
+        going_reverse = forward_velocity > 0 and abs(heading_error) > math.pi / 2
+        off_track = abs(lateral_error) > self.off_track_threshold
+        terminated = off_track or going_reverse
+        # ---- reward -------------------------------------------------------
+        reward: float = self._compute_reward(
+            forward_velocity, lateral_error, heading_error, going_reverse=going_reverse,
+        )
+
         truncated = self.step_count >= self.max_episode_steps
 
         observation = self._get_observation()

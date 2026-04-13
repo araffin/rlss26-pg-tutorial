@@ -165,6 +165,12 @@ class LineFollowerDriftEnv(LineFollowerEnv):
         prev_lap_count = self.lap_count
         self._update_lap_detection()
 
+        # ---- termination / truncation -------------------------------------
+        # Going reverse: facing the wrong way on the track while moving forward
+        going_reverse = forward_velocity > 0 and abs(heading_error) > math.pi / 2
+        off_track = abs(lateral_error) > self.off_track_threshold
+        terminated = off_track or going_reverse or seg_advance < 0
+
         # ---- reward -------------------------------------------------------
         reward: float = self._compute_reward_drift(
             forward_velocity,
@@ -172,11 +178,9 @@ class LineFollowerDriftEnv(LineFollowerEnv):
             heading_error,
             seg_advance,
             prev_lap_count,
+            going_reverse=going_reverse,
         )
 
-        # ---- termination / truncation -------------------------------------
-        # Off-track or going backward
-        terminated = abs(lateral_error) > self.off_track_threshold or forward_velocity < 0 or seg_advance < 0
         truncated = self.step_count >= self.max_episode_steps
 
         observation = self._get_observation()
@@ -259,7 +263,12 @@ class LineFollowerDriftEnv(LineFollowerEnv):
         heading_error: float,
         seg_advance: int,
         prev_lap_count: int,
+        *,
+        going_reverse: bool = False,
     ) -> float:
+        if going_reverse:
+            return -10.0
+
         if self.reward_mode == "racing":
             progress_reward = float(seg_advance) / self.num_track_segments
             centering_penalty = -0.1 * (math.fabs(lateral_error) / self.off_track_threshold) ** 2
