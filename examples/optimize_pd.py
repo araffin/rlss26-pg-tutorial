@@ -187,15 +187,17 @@ def main() -> None:
         max_episode_steps=max_episode_steps,
     )
 
-    # controller = PDController(kp=0.00446, kd=0.01050, dt=env.dt, speed=0.5)
-    controller = BangBangController(steering_step=0.01, speed=0.1)
+    # Base, oscillating
+    controller = PDController(kp=0.00446, kd=0.01050, dt=env.dt, speed=0.5)
+    # Optimized
+    # controller = PDController(kp=0.00420, kd=0.00758, dt=env.dt, speed=0.5)
+    # controller = BangBangController(steering_step=0.01, speed=0.1)
 
     if args.optimize:
         kp, kd = optimize(env, PDController(speed=0.5, dt=env.dt), n_iterations=10)
         print(f"Optimized gains: {kp=:.5f}, {kd=:.5f}")
     else:
         evaluate(env, controller)
-        # evaluate(env, kp=0.00408, kd=0.00734, speed=0.5)
 
     env.close()
 
