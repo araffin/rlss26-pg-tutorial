@@ -124,7 +124,7 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         max_wheel_speed: float = 150.0,
         friction: float = 0.05,
         inertia: float = 0.95,
-        action_noise_std: float = 0.05,
+        action_noise_std: float = 0.01,
         dt: float = 1 / 30,
         max_episode_steps: int = 100000,  # overwritten by gym registration
         track_width: float = 60.0,

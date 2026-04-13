@@ -72,6 +72,11 @@ class TestGymEnvChecker:
         check_env(env, skip_render_check=True)
         env.close()
 
+    def test_check_constant_speed(self) -> None:
+        env = gym.make("LineFollowerConstantSpeed-v0")
+        check_env(env.unwrapped, skip_render_check=True)
+        env.close()
+
     def test_check_env_with_rgb_render(self) -> None:
         env = gym.make("LineFollower-v0", action_noise_std=0.0, render_mode="rgb_array")
         check_env(env.unwrapped, skip_render_check=False)
