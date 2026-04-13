@@ -388,7 +388,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         terminated = off_track or going_reverse
         # ---- reward -------------------------------------------------------
         reward: float = self._compute_reward(
-            forward_velocity, lateral_error, heading_error, going_reverse=going_reverse,
+            forward_velocity,
+            lateral_error,
+            heading_error,
+            going_reverse=going_reverse,
         )
 
         truncated = self.step_count >= self.max_episode_steps

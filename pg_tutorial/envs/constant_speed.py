@@ -53,7 +53,7 @@ class LineFollowerConstantSpeedEnv(LineFollowerEnv):
     def __init__(
         self,
         *,
-        base_speed: float = 0.6,
+        base_speed: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -82,3 +82,21 @@ class LineFollowerConstantSpeedEnv(LineFollowerEnv):
             dtype=np.float32,
         )
         return super()._apply_action(two_wheel_action)
+
+    def _compute_reward(
+        self,
+        forward_velocity: float,
+        lateral_error: float,
+        heading_error: float,
+        *,
+        going_reverse: bool = False,
+    ) -> float:
+        """Line-following reward."""
+        if going_reverse:
+            return -10.0
+
+        # Pure PD cost
+        lateral_penalty = -((lateral_error / self.off_track_threshold) ** 2)
+        # heading_penalty = -((heading_error / np.pi) ** 2)
+        alive_bonus = 1.0  # otherwise the agent learns to determinate early
+        return alive_bonus + lateral_penalty  # + 0.5 * heading_penalty
