@@ -211,7 +211,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index: int = 0
         self.step_count: int = 0
         self.forward_speed: float = 0.0
-        self.prev_lateral_error = self.prev_heading_error = 0.0
+        self._prev_lateral_error = self._prev_heading_error = 0.0
+        self._current_lateral_error = 0.0
 
         # Checkpoints: 5 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
@@ -258,7 +259,9 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.current_segment_index = 0
         self.step_count = 0
         self.forward_speed = 0.0
-        self.prev_lateral_error = self.prev_heading_error = 0.0
+        self._prev_lateral_error = self._prev_heading_error = 0.0
+        # for faster access
+        self._current_lateral_error = 0.0
 
         # Lap tracking
         self.lap_count = 0
@@ -267,9 +270,16 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         # self.best_lap_time = float("inf")
         self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
 
-        observation = self._get_observation()
-        info = self._get_info()
+        lateral_error, heading_error, closest_pt = self._compute_track_errors()
+        self._current_lateral_error = lateral_error
+        observation = self._get_observation(lateral_error, heading_error)
+        info = self._get_info(lateral_error, heading_error, closest_pt)
         return observation, info
+
+    @property
+    def lateral_error(self) -> float:
+        # return cached value
+        return self._current_lateral_error
 
     def _apply_action(self, action: NDArray[np.float32]) -> tuple[float, float]:
         """Decode action, apply inertia / friction, return (forward_velocity, angular_velocity).
@@ -378,7 +388,8 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self._integrate_kinematics(forward_velocity, angular_velocity)
 
         # ---- track information & lap detection ----------------------------
-        lateral_error, heading_error, _ = self._compute_track_errors()
+        lateral_error, heading_error, closest_pt = self._compute_track_errors()
+        self._current_lateral_error = lateral_error
         self._update_lap_detection()
 
         # ---- termination / truncation -------------------------------------
@@ -396,20 +407,19 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
         truncated = self.step_count >= self.max_episode_steps
 
-        observation = self._get_observation()
-        info = self._get_info()
+        observation = self._get_observation(lateral_error, heading_error)
+        info = self._get_info(lateral_error, heading_error, closest_pt)
         return observation, reward, terminated, truncated, info
 
     # ---- observation / info helpers ---------------------------------------
 
-    def _get_observation(self) -> NDArray[np.float32]:
-        lateral_error, heading_error, _ = self._compute_track_errors()
+    def _get_observation(self, lateral_error: float, heading_error: float) -> NDArray[np.float32]:
         # Derivative (finite difference)
-        lateral_error_derivative = (lateral_error - self.prev_lateral_error) / self.dt
-        heading_error_derivative = (heading_error - self.prev_heading_error) / self.dt
+        lateral_error_derivative = (lateral_error - self._prev_lateral_error) / self.dt
+        heading_error_derivative = (heading_error - self._prev_heading_error) / self.dt
         # Update prev errors
-        self.prev_lateral_error = lateral_error
-        self.prev_heading_error = heading_error
+        self._prev_lateral_error = lateral_error
+        self._prev_heading_error = heading_error
 
         left_linear = self.left_wheel_speed * self.wheel_radius
         right_linear = self.right_wheel_speed * self.wheel_radius
@@ -437,15 +447,14 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         )
         return observation
 
-    def _get_info(self) -> dict[str, Any]:
-        lateral_error, heading_error, closest = self._compute_track_errors()
+    def _get_info(self, lateral_error: float, heading_error: float, closest_pt: NDArray[np.float64]) -> dict[str, Any]:
         return {
             "robot_x": self.robot_x,
             "robot_y": self.robot_y,
             "robot_theta": self.robot_theta,
             "lateral_error": lateral_error,
             "heading_error": heading_error,
-            "closest_point": closest,
+            "closest_point": closest_pt,
             "segment_index": self.current_segment_index,
             "forward_speed": self.forward_speed,
             "lap_count": self.lap_count,
@@ -625,11 +634,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         )
 
         # -- robot ----------------------------------------------------------
-        _lat_err, _head_err, closest_pt = self._compute_track_errors()
+        lateral_error, heading_error, closest_pt = self._compute_track_errors()
         self._render_robot(surface, pygame, closest_pt)
 
         # -- HUD ------------------------------------------------------------
-        lateral_error, heading_error, _ = self._compute_track_errors()
         self._render_hud(surface, pygame, lateral_error, heading_error)
 
         if self.render_mode == "human":

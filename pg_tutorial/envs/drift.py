@@ -157,7 +157,7 @@ class LineFollowerDriftEnv(LineFollowerEnv):
         )
 
         # ---- track information & lap detection ----------------------------
-        lateral_error, heading_error, _ = self._compute_track_errors()
+        lateral_error, heading_error, closest_pt = self._compute_track_errors()
 
         # Track segment progress
         seg_advance = self._compute_segment_advance()
@@ -183,8 +183,8 @@ class LineFollowerDriftEnv(LineFollowerEnv):
 
         truncated = self.step_count >= self.max_episode_steps
 
-        observation = self._get_observation()
-        info = self._get_info()
+        observation = self._get_observation(lateral_error, heading_error)
+        info = self._get_info(lateral_error, heading_error, closest_pt)
         info.update(self._drift_info())
         return observation, reward, terminated, truncated, info
 
