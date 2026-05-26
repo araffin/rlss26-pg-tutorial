@@ -5,7 +5,7 @@ Run with::
 
     python examples/pd_controller.py --track s_track
 
-Available tracks: ``oval`, ``s_track``, ``rounded_l``, ``hairpin``, ``custom``.
+Available tracks: "oval`, "s_track", "rounded_l", "hairpin", "custom".
 """
 
 import argparse

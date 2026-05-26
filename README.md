@@ -1,5 +1,6 @@
 # Reinforcement Learning Summer School 2026 - Policy Gradient Tutorial
 
+Direct Policy Search: black-box optimization (BBO) and policy gradient (PG).
 
 Website: https://rlsummerschool.com/
 
