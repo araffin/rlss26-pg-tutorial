@@ -212,7 +212,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.step_count: int = 0
         self.forward_speed: float = 0.0
         self._prev_lateral_error = self._prev_heading_error = 0.0
-        self._current_lateral_error = 0.0
 
         # Checkpoints: 5 evenly-spaced segment indices around the track.
         # Checkpoint 0 doubles as the start/finish line.
@@ -260,8 +259,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self.step_count = 0
         self.forward_speed = 0.0
         self._prev_lateral_error = self._prev_heading_error = 0.0
-        # for faster access
-        self._current_lateral_error = 0.0
 
         # Lap tracking
         self.lap_count = 0
@@ -271,15 +268,9 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
         self._next_checkpoint = 1  # start past CP 0 (robot spawns there)
 
         lateral_error, heading_error, closest_pt = self._compute_track_errors()
-        self._current_lateral_error = lateral_error
         observation = self._get_observation(lateral_error, heading_error)
         info = self._get_info(lateral_error, heading_error, closest_pt)
         return observation, info
-
-    @property
-    def lateral_error(self) -> float:
-        # return cached value
-        return self._current_lateral_error
 
     def _apply_action(self, action: NDArray[np.float32]) -> tuple[float, float]:
         """Decode action, apply inertia / friction, return (forward_velocity, angular_velocity).
@@ -389,7 +380,6 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
 
         # ---- track information & lap detection ----------------------------
         lateral_error, heading_error, closest_pt = self._compute_track_errors()
-        self._current_lateral_error = lateral_error
         self._update_lap_detection()
 
         # ---- termination / truncation -------------------------------------
@@ -652,6 +642,10 @@ class LineFollowerEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
             np.array(pygame.surfarray.pixels3d(surface)),
             axes=(1, 0, 2),
         ).copy()
+        # reduce RAM taken while creating a video
+        # FIXME(antonin): uses more RAM...
+        # from skimage.transform import resize
+        # return (resize(image, (self.screen_height // 2, self.screen_width // 2)) * 255.0)
 
     def _render_robot(self, surface: Any, pygame_module: Any, closest_pt: NDArray[np.float64]) -> None:
         """Draw the robot.  Subclasses can override to add drift visuals."""
