@@ -42,9 +42,9 @@ dev = [
 [tool.setuptools_scm]
 write_to = "pg_tutorial/_version.py"
 
-[tool.uv]
-# TODO(antonin): remove once rl-zoo3 2.9.0 is released
-prerelease = "allow"
+# [tool.uv]
+# # TODO(antonin): remove once rl-zoo3 2.9.0 is released
+# prerelease = "allow"
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -68,10 +68,10 @@ tests = [
     # Reformat
     "black",
 ]
-rl = [
-    # "stable-baselines3>=2.8.0",
-    "rl_zoo3>=2.9.0a2",
-]
+# rl = [
+#     # "stable-baselines3>=2.8.0",
+#     "rl_zoo3>=2.9.0a2",
+# ]
 
 [project.urls]
 "Homepage" = "https://github.com/araffin/rlss26-pg-tutorial"
