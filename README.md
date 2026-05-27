@@ -12,7 +12,8 @@ RL Summer School 2026: https://2026.rlsummerschool.com/
 
 ## Content
 
-<!--1. Fitted Q-Iteration (FQI) [Colab Notebook](https://colab.research.google.com/github/araffin/rlss23-dqn-tutorial/blob/main/notebooks/1_fitted_q_iteration_fqi.ipynb)-->
+1. PD Control and Black-Box Optimization (BBO) [Colab Notebook](https://colab.research.google.com/github/araffin/rlss26-pg-tutorial/blob/master/notebooks/1_pd_control.ipynb)
+2. Policy Gradient and Racing [TBD]
 
 ## Run Locally (instead of using Google colab)
 
