@@ -1,14 +1,12 @@
-from torch.backends.cudnn import deterministic
 import base64
 import os
 import warnings
 from collections.abc import Callable
 from pathlib import Path
 
-import torch as th
-
 import gymnasium as gym
 import numpy as np
+import torch as th
 from gymnasium.wrappers import RecordVideo
 from IPython import display as ipythondisplay
 
@@ -169,7 +167,6 @@ def evaluate_policy(
         env.start_recording(video_name)
 
     obs, _ = env.reset()
-    lateral_error = prev_lateral_error = float(obs[IDX_LATERAL_ERROR])
     best_lap_time = float("inf")
     lap_count = 0
 
