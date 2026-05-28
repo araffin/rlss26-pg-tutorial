@@ -173,7 +173,6 @@ if __name__ == "__main__":
         # Convert lists to tensors
         obs_tensor = th.stack(observations)
         actions_tensor = th.stack(actions)
-        rewards_tensor = th.tensor(rewards)
 
         # Compute discounted returns
         discounted_returns = th.zeros(len(rewards))

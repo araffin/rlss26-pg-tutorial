@@ -95,7 +95,7 @@ warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 class LinearPolicy(nn.Module):
     """
     A simple PyTorch model to represent a Linear policy
-    in the discrete action setting.
+    in the continuous action setting.
 
     :param obs_dim: Dimension of the observation space (we assume that the observation is a 1D vector)
     :param action_dim: Dimension of the action space
@@ -277,7 +277,6 @@ if __name__ == "__main__":
         # Convert lists to tensors
         obs_tensor = th.stack(observations)
         actions_tensor = th.stack(actions)
-        rewards_tensor = th.tensor(rewards)
 
         # Compute discounted returns
         discounted_returns = th.zeros(len(rewards))
