@@ -277,7 +277,7 @@ class LineFollowerDriftEnv(LineFollowerEnv):
 
         elif self.reward_mode == "racingv2":
             max_speed = self.max_wheel_speed
-            # going fast close to the center of lane yeilds best reward
+            # going fast close to the center of lane
             return (1.0 - (math.fabs(lateral_error) / self.off_track_threshold) ** 2) * (forward_velocity / max_speed)
 
         # line_following — delegate to the base reward
