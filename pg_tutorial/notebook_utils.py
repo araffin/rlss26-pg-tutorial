@@ -110,7 +110,7 @@ def evaluate(
             episode_returns.append(episode_reward)
             episode_reward = 0.0
             total_episodes += 1
-            env.reset()
+            obs, _ = env.reset()
 
     if isinstance(env, RecordVideo):
         print(f"Saving video to {video_save_path}/{video_name}.mp4")
