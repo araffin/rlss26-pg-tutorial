@@ -1,5 +1,8 @@
 # Reinforcement Learning Summer School 2026 - Direct Policy Search Tutorial
 
+<img style="background:white;" src="https://araffin.github.io/slides/rlss26-bbo-pg/images/racing/two_cars.svg" align="right" width="40%"/>
+
+
 This tutorial covers direct policy search methods for RL, including black-box optimization (BBO), finite-differences and policy gradient (PG) approaches.
 
 Website: https://rlsummerschool.com/
