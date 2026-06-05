@@ -29,7 +29,7 @@ dependencies = [
     # todo: update rl zoo to be able to have gymnasium v1.3.0 without pygame
     "gymnasium[classic-control,other]>=0.29.1,<2.0",
     "tqdm>=4.67",
-    "rich>=14",
+    "rich>=12.5",
 ]
 
 [dependency-groups]

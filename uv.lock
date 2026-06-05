@@ -2527,7 +2527,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "pytest", marker = "extra == 'tests'" },
     { name = "pytest-cov", marker = "extra == 'tests'" },
-    { name = "rich", specifier = ">=14" },
+    { name = "rich", specifier = ">=12.5" },
     { name = "ruff", marker = "extra == 'tests'" },
     { name = "scikit-learn" },
     { name = "torch", specifier = ">=2.4.0", index = "https://download.pytorch.org/whl/cpu" },
